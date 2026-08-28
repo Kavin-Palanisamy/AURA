@@ -38,6 +38,7 @@ import {
   AnalyzePageResponseData
 } from '../types/messages';
 import type { PageContext } from '../types/page';
+import { fetchAvailableGeminiModels } from '../ai/geminiProvider';
 
 type ActiveTabMode = 'analyze' | 'test' | 'settings';
 type StatusState = 'idle' | 'loading' | 'success' | 'error';
@@ -73,6 +74,8 @@ export default function Popup() {
   // Day 4 Settings & API Key State
   const [apiKeyInput, setApiKeyInput] = useState<string>('');
   const [modelSelect, setModelSelect] = useState<string>('gemini-2.5-flash');
+  const [isDetectingModels, setIsDetectingModels] = useState<boolean>(false);
+  const [detectedModels, setDetectedModels] = useState<string[]>([]);
   const [hasStoredKey, setHasStoredKey] = useState<boolean>(false);
   const [showKey, setShowKey] = useState<boolean>(false);
   const [settingsFeedback, setSettingsFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -110,6 +113,32 @@ export default function Popup() {
       }
     } catch (err) {
       console.warn('Could not read chrome.storage:', err);
+    }
+  };
+
+  const handleDetectModels = async () => {
+    if (!apiKeyInput.trim()) {
+      setSettingsFeedback({ type: 'error', text: 'Enter your API key first to auto-detect models.' });
+      return;
+    }
+    setIsDetectingModels(true);
+    try {
+      const list = await fetchAvailableGeminiModels(apiKeyInput.trim());
+      if (list.length > 0) {
+        setDetectedModels(list);
+        if (!list.includes(modelSelect)) {
+          const best = list.find(m => m.includes('flash')) || list[0];
+          setModelSelect(best);
+        }
+        setSettingsFeedback({ type: 'success', text: `Found ${list.length} active model(s) for your account!` });
+      } else {
+        setSettingsFeedback({ type: 'error', text: 'Could not fetch models. Verify your API key or network.' });
+      }
+    } catch {
+      setSettingsFeedback({ type: 'error', text: 'Failed to query Gemini models API.' });
+    } finally {
+      setIsDetectingModels(false);
+      setTimeout(() => setSettingsFeedback(null), 4000);
     }
   };
 
@@ -762,17 +791,40 @@ export default function Popup() {
               </button>
             </div>
 
-            {/* Model Selector */}
+            {/* Model Selector with Auto-Detect */}
             <div className="flex flex-col gap-1 mt-1">
-              <label className="text-[10px] text-slate-400 font-medium">Gemini Model</label>
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] text-slate-400 font-medium">Gemini Model</label>
+                <button
+                  type="button"
+                  onClick={handleDetectModels}
+                  disabled={isDetectingModels}
+                  className="text-[9.5px] text-cyan-400 hover:text-cyan-300 font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                  title="Detect supported models for your API key"
+                >
+                  <RefreshCw className={`w-2.5 h-2.5 ${isDetectingModels ? 'animate-spin' : ''}`} />
+                  <span>{isDetectingModels ? 'Detecting...' : 'Auto-Detect'}</span>
+                </button>
+              </div>
+
               <select
                 value={modelSelect}
                 onChange={(e) => setModelSelect(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700/80 rounded-lg py-1.5 px-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono cursor-pointer"
               >
-                <option value="gemini-2.5-flash">gemini-2.5-flash (Default & Recommended)</option>
-                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (Fast & Lightweight)</option>
-                <option value="gemini-2.5-pro">gemini-2.5-pro (High Reasoning)</option>
+                {detectedModels.length > 0 ? (
+                  detectedModels.map((m) => (
+                    <option key={m} value={m}>
+                      {m} {m === 'gemini-2.5-flash' ? '(Recommended)' : ''}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="gemini-2.5-flash">gemini-2.5-flash (Default & Recommended)</option>
+                    <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (Fast & Lightweight)</option>
+                    <option value="gemini-2.5-pro">gemini-2.5-pro (High Reasoning)</option>
+                  </>
+                )}
               </select>
             </div>
 
