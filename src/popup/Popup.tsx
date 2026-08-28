@@ -72,7 +72,7 @@ export default function Popup() {
 
   // Day 4 Settings & API Key State
   const [apiKeyInput, setApiKeyInput] = useState<string>('');
-  const [modelSelect, setModelSelect] = useState<string>('gemini-1.5-flash');
+  const [modelSelect, setModelSelect] = useState<string>('gemini-2.5-flash');
   const [hasStoredKey, setHasStoredKey] = useState<boolean>(false);
   const [showKey, setShowKey] = useState<boolean>(false);
   const [settingsFeedback, setSettingsFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -98,7 +98,14 @@ export default function Popup() {
           setHasStoredKey(false);
         }
         if (data?.aura_gemini_model) {
-          setModelSelect(data.aura_gemini_model);
+          const storedModel = data.aura_gemini_model;
+          // Auto-migrate away from deprecated 1.5/2.0 shut-down models
+          if (['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'].includes(storedModel)) {
+            setModelSelect('gemini-2.5-flash');
+            await chrome.storage.local.set({ aura_gemini_model: 'gemini-2.5-flash' });
+          } else {
+            setModelSelect(storedModel);
+          }
         }
       }
     } catch (err) {
@@ -763,9 +770,9 @@ export default function Popup() {
                 onChange={(e) => setModelSelect(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700/80 rounded-lg py-1.5 px-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono cursor-pointer"
               >
-                <option value="gemini-1.5-flash">gemini-1.5-flash (Fast & Recommended)</option>
-                <option value="gemini-2.0-flash">gemini-2.0-flash (Latest Flash)</option>
-                <option value="gemini-1.5-pro">gemini-1.5-pro (High Reasoning)</option>
+                <option value="gemini-2.5-flash">gemini-2.5-flash (Default & Recommended)</option>
+                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (Fast & Lightweight)</option>
+                <option value="gemini-2.5-pro">gemini-2.5-pro (High Reasoning)</option>
               </select>
             </div>
 

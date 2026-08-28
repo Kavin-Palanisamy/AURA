@@ -2,23 +2,22 @@
  * AURA Gemini AI Provider (Day 4: AI Intelligence)
  *
  * Implements AIProvider interface using Google Gemini REST API.
- * Features automatic resilient fallback across supported Gemini models:
- * gemini-1.5-flash -> gemini-2.0-flash -> gemini-1.5-pro
+ * Features targeted Gemini 2.5 architecture:
+ * gemini-2.5-flash -> gemini-2.5-flash-lite -> gemini-2.5-pro
  */
 
-import type { AIProvider, AuraAIRequest, AuraAIResponse } from './types';
+import type { AIProvider, AuraAIRequest, AuraAIResponse, GeminiModel } from './types';
+import { DEFAULT_GEMINI_MODEL, GEMINI_FALLBACK_CHAIN } from './types';
 import { buildSystemInstruction, buildUserPrompt } from './promptBuilder';
 import { validateAIResponse } from './responseValidator';
 
-const CANDIDATE_MODELS = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
-
 export class GeminiProvider implements AIProvider {
   public name = 'Google Gemini';
-  private preferredModel: string = 'gemini-1.5-flash';
+  private preferredModel: GeminiModel | string = DEFAULT_GEMINI_MODEL;
 
-  constructor(customModel?: string) {
-    if (customModel) {
-      this.preferredModel = customModel;
+  constructor(customModel?: GeminiModel | string) {
+    if (customModel && customModel.trim()) {
+      this.preferredModel = customModel.trim();
     }
   }
 
@@ -47,71 +46,100 @@ export class GeminiProvider implements AIProvider {
       }
     };
 
-    // Prepare list of models to try: preferred first, then fallbacks
-    const modelsToTry = [
+    // User-selected model is prioritized first; fallback only if unavailable
+    const modelsToTry: string[] = [
       this.preferredModel,
-      ...CANDIDATE_MODELS.filter(m => m !== this.preferredModel)
+      ...GEMINI_FALLBACK_CHAIN.filter(m => m !== this.preferredModel)
     ];
 
-    let lastError: Error | null = null;
+    let lastErrorType: 'AUTH' | 'RATE_LIMIT' | 'MODEL_404' | 'NETWORK' | 'INVALID_RESPONSE' | 'UNKNOWN' = 'UNKNOWN';
+    let lastErrorMessage = '';
 
     for (const model of modelsToTry) {
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${trimmedKey}`;
 
+      let response: Response;
       try {
-        const response = await fetch(endpoint, {
+        response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify(payload)
         });
-
-        if (response.ok) {
-          const data = await response.json();
-          const candidate = data?.candidates?.[0];
-          const candidateText = candidate?.content?.parts?.[0]?.text;
-
-          if (!candidateText || typeof candidateText !== 'string') {
-            throw new Error('Gemini returned an empty response. Please rephrase your question.');
-          }
-
-          // Validate and sanitize AI response
-          return validateAIResponse(candidateText, request.context);
-        }
-
-        let errorDetail = '';
-        try {
-          const errorJson = await response.json();
-          errorDetail = errorJson?.error?.message || response.statusText;
-        } catch {
-          errorDetail = response.statusText;
-        }
-
-        // If 404 (model not found / deprecated for this API key), try next model in fallback list
-        if (response.status === 404) {
-          console.warn(`[AURA Gemini Provider] Model "${model}" returned 404 (${errorDetail}). Trying fallback model...`);
-          lastError = new Error(`Model ${model} unavailable: ${errorDetail}`);
-          continue;
-        }
-
-        if (response.status === 400 || response.status === 403) {
-          throw new Error(`Gemini API Authentication Error: ${errorDetail}. Please verify your API key in AURA Settings.`);
-        }
-
-        if (response.status === 429) {
-          throw new Error('Gemini API rate limit exceeded. Please wait a moment and try again.');
-        }
-
-        throw new Error(`Gemini API Error (${response.status}): ${errorDetail}`);
       } catch (fetchErr) {
-        if (fetchErr instanceof Error && (fetchErr.message.includes('Authentication Error') || fetchErr.message.includes('rate limit'))) {
-          throw fetchErr;
-        }
-        lastError = fetchErr instanceof Error ? fetchErr : new Error(String(fetchErr));
+        lastErrorType = 'NETWORK';
+        const msg = fetchErr instanceof Error ? fetchErr.message : 'Connection failed';
+        lastErrorMessage = `Network error: Unable to reach Google Gemini API (${msg}). Please check your internet connection.`;
+        // Network failures affect all endpoints, abort fallback loop immediately
+        throw new Error(lastErrorMessage);
       }
+
+      if (response.ok) {
+        let data: Record<string, unknown>;
+        try {
+          data = await response.json();
+        } catch {
+          lastErrorType = 'INVALID_RESPONSE';
+          throw new Error('Gemini returned an invalid JSON response format. Please rephrase your question.');
+        }
+
+        const candidates = data?.candidates as Array<{ content?: { parts?: Array<{ text?: string }> } }> | undefined;
+        const candidateText = candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (!candidateText || typeof candidateText !== 'string') {
+          lastErrorType = 'INVALID_RESPONSE';
+          throw new Error('Gemini returned an empty response. Please rephrase your question.');
+        }
+
+        // Validate and sanitize AI response
+        return validateAIResponse(candidateText, request.context);
+      }
+
+      // Parse error details
+      let errorDetail = '';
+      let errorCode = '';
+      try {
+        const errorJson = await response.json();
+        errorDetail = errorJson?.error?.message || response.statusText;
+        errorCode = errorJson?.error?.status || '';
+      } catch {
+        errorDetail = response.statusText;
+      }
+
+      // Distinguish 1: Authentication / Invalid Key (400, 401, 403)
+      if (
+        response.status === 401 ||
+        response.status === 403 ||
+        (response.status === 400 && (errorDetail.toLowerCase().includes('key') || errorCode === 'INVALID_ARGUMENT'))
+      ) {
+        lastErrorType = 'AUTH';
+        throw new Error(`Invalid Gemini API Key: ${errorDetail}. Please verify your key in AURA Settings.`);
+      }
+
+      // Distinguish 2: Rate Limit / Quota Exceeded (429, RESOURCE_EXHAUSTED)
+      if (response.status === 429 || errorCode === 'RESOURCE_EXHAUSTED') {
+        lastErrorType = 'RATE_LIMIT';
+        throw new Error('Gemini API rate limit exceeded (Quota or QPS reached). Please wait a moment before asking again.');
+      }
+
+      // Distinguish 3: Model Unavailable / Not Found (404)
+      if (response.status === 404) {
+        lastErrorType = 'MODEL_404';
+        console.warn(`[AURA Gemini Provider] Model "${model}" returned 404 (${errorDetail}). Trying next fallback candidate in chain...`);
+        lastErrorMessage = `Gemini model "${model}" is not available for this account/region (${errorDetail}).`;
+        continue; // Try next fallback candidate
+      }
+
+      // Other API errors
+      lastErrorType = 'UNKNOWN';
+      lastErrorMessage = `Gemini API Error (${response.status}): ${errorDetail}`;
     }
 
-    throw lastError || new Error('Failed to connect to Gemini API. Please check your network and API key.');
+    if (lastErrorType === 'MODEL_404') {
+      throw new Error('All configured Gemini models (gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.5-pro) were unavailable. Please verify your Google AI Studio access.');
+    }
+
+    throw new Error(lastErrorMessage || 'Failed to generate AI guidance. Please verify your settings.');
   }
 }

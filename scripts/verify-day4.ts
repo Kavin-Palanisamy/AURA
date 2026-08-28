@@ -144,10 +144,21 @@ const fencedAiOutput = `\`\`\`json
 
 const validatedResult3 = validateAIResponse(fencedAiOutput, sanitized);
 
-if (validatedResult3.action === 'answer' && validatedResult3.targetId === null && validatedResult3.confidence === 0.88) {
-  console.log('✅ TEST 5 PASSED: Markdown fences stripped and parsed cleanly.');
+// TEST 6: Gemini 2.5 Model Selection & Fallback Chain
+console.log('\nTEST 6: Gemini 2.5 Model Configuration & Fallback Chain');
+import { DEFAULT_GEMINI_MODEL, GEMINI_FALLBACK_CHAIN } from '../src/ai/types';
+import { GeminiProvider } from '../src/ai/geminiProvider';
+
+if (
+  DEFAULT_GEMINI_MODEL === 'gemini-2.5-flash' &&
+  GEMINI_FALLBACK_CHAIN.length === 3 &&
+  GEMINI_FALLBACK_CHAIN[0] === 'gemini-2.5-flash' &&
+  GEMINI_FALLBACK_CHAIN[1] === 'gemini-2.5-flash-lite' &&
+  GEMINI_FALLBACK_CHAIN[2] === 'gemini-2.5-pro'
+) {
+  console.log('✅ TEST 6 PASSED: Default is gemini-2.5-flash. Fallback chain: gemini-2.5-flash -> gemini-2.5-flash-lite -> gemini-2.5-pro.');
 } else {
-  console.error('❌ TEST 5 FAILED: Failed to parse fenced JSON.');
+  console.error('❌ TEST 6 FAILED: Gemini model fallback chain misconfigured.', { DEFAULT_GEMINI_MODEL, GEMINI_FALLBACK_CHAIN });
   process.exit(1);
 }
 

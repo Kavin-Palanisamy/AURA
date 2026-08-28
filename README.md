@@ -9,7 +9,7 @@
 - **Frontend Framework**: React 18
 - **Language**: TypeScript (Strict mode)
 - **Bundler & Build Tool**: Vite
-- **AI Engine**: Google Gemini REST API (`gemini-2.5-flash` / `gemini-1.5-flash`)
+- **AI Engine**: Google Gemini REST API (`gemini-2.5-flash` default, `gemini-2.5-flash-lite`, `gemini-2.5-pro`)
 - **Styling**: Tailwind CSS (Popup) + Scoped Shadow DOM CSS (In-Page Floating Assistant, AI Chat & Highlighting)
 - **Icons**: Lucide React / Scoped SVG icons
 

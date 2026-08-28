@@ -6,6 +6,16 @@
  * - Structured JSON output format for all AI responses.
  */
 
+export type GeminiModel = 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | 'gemini-2.5-pro';
+
+export const DEFAULT_GEMINI_MODEL: GeminiModel = 'gemini-2.5-flash';
+
+export const GEMINI_FALLBACK_CHAIN: GeminiModel[] = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-pro'
+];
+
 export interface SanitizedHeading {
   id: string;
   level: number;
