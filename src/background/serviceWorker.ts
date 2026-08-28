@@ -8,15 +8,19 @@ import {
   HighlightElementMessage,
   ToggleAssistantMessage,
   AskAIMessage,
+  ScanPrivacyMessage,
   TestConnectionResponseData,
   AnalyzePageResponseData,
   HighlightElementResponseData,
-  AskAIResponseData
+  AskAIResponseData,
+  ScanPrivacyResponseData
 } from '../types/messages';
 import type { PageContext } from '../types/page';
 import { getAIProvider } from '../ai/provider';
+import { sanitizePageContextForAI } from '../ai/sanitizer';
+import { PrivacyShield } from '../privacy/privacyShield';
 
-console.log('[AURA Background] Service Worker initialized (Day 1 - Day 4).');
+console.log('[AURA Background] Service Worker initialized (Day 1 - Day 5 Privacy Shield).');
 
 /**
  * Handle incoming runtime messages from popup, content scripts, and floating UI
@@ -65,13 +69,19 @@ chrome.runtime.onMessage.addListener(
       return true;
     }
 
-    // 5. Day 4: Ask AI Guidance
+    // 5. Day 4: Ask AI Guidance (Protected by Day 5 Privacy Shield)
     if (message.action === AURA_ACTIONS.ASK_AI) {
       handleAskAI(message as AskAIMessage, sendResponse as (res: AuraResponse<AskAIResponseData>) => void);
       return true;
     }
 
-    // 6. Health Check
+    // 6. Day 5: Privacy Shield Local Scan
+    if (message.action === AURA_ACTIONS.SCAN_PRIVACY) {
+      handleScanPrivacy(message as ScanPrivacyMessage, sendResponse as (res: AuraResponse<ScanPrivacyResponseData>) => void);
+      return true;
+    }
+
+    // 7. Health Check
     if (message.action === AURA_ACTIONS.PING) {
       sendResponse({
         success: true,
@@ -86,7 +96,7 @@ chrome.runtime.onMessage.addListener(
 );
 
 /**
- * Day 4: Handles AI Guidance requests using Gemini Provider
+ * Day 4 + Day 5: Handles AI Guidance requests with mandatory Privacy Shield protection
  */
 async function handleAskAI(
   message: AskAIMessage,
@@ -104,7 +114,21 @@ async function handleAskAI(
   }
 
   try {
-    // 1. Retrieve API key from chrome.storage.local or env fallback
+    // 1. Mandatory Privacy Shield Protection (Runs 100% locally before AI dispatch)
+    let protectedResult;
+    try {
+      protectedResult = PrivacyShield.protect(context);
+    } catch (privacyErr) {
+      console.error('[AURA Background] Privacy Shield protection failed:', privacyErr);
+      sendResponse({
+        success: false,
+        error: 'Privacy Shield could not verify this page context. AI guidance was not sent.',
+        timestamp: Date.now()
+      });
+      return;
+    }
+
+    // 2. Retrieve API key from chrome.storage.local or env fallback
     const apiKey = await getStoredApiKey();
 
     if (!apiKey) {
@@ -116,15 +140,19 @@ async function handleAskAI(
       return;
     }
 
-    // 2. Dispatch to AI Provider
+    // 3. Dispatch REDACTED context to AI Provider
     const model = await getStoredModel();
     const provider = getAIProvider(model || undefined);
-    const aiResponse = await provider.ask({ question, context }, apiKey);
+    const aiResponse = await provider.ask({ question, context: protectedResult.context }, apiKey);
 
     sendResponse({
       success: true,
-      message: 'AI response generated successfully',
-      data: aiResponse,
+      message: 'AI response generated successfully (Protected by Privacy Shield)',
+      data: {
+        ...aiResponse,
+        privacySummary: protectedResult.summary,
+        redactedCount: protectedResult.redactedCount
+      },
       timestamp: Date.now()
     });
   } catch (error: unknown) {
@@ -134,6 +162,69 @@ async function handleAskAI(
     sendResponse({
       success: false,
       error: errorMsg,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Day 5: Handles local Privacy Shield scan without sending anything to AI
+ */
+async function handleScanPrivacy(
+  message: ScanPrivacyMessage,
+  sendResponse: (response: AuraResponse<ScanPrivacyResponseData>) => void
+): Promise<void> {
+  try {
+    let sanitizedContext = message.payload?.context;
+
+    // If context not provided directly, analyze the current active tab
+    if (!sanitizedContext) {
+      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!activeTab || !activeTab.id || isRestrictedUrl(activeTab.url || '')) {
+        sendResponse({
+          success: false,
+          error: 'Cannot run Privacy Shield on restricted browser pages.',
+          timestamp: Date.now()
+        });
+        return;
+      }
+
+      const analyzeMessage: AnalyzePageMessage = {
+        action: AURA_ACTIONS.ANALYZE_PAGE,
+        payload: { source: 'popup', requestedAt: Date.now() }
+      };
+
+      const contentScriptResponse = await sendTabMessageWithFallback(activeTab.id, analyzeMessage);
+      if (!contentScriptResponse || !contentScriptResponse.success || !contentScriptResponse.data) {
+        sendResponse({
+          success: false,
+          error: 'Could not analyze page structure for privacy scan.',
+          timestamp: Date.now()
+        });
+        return;
+      }
+
+      sanitizedContext = sanitizePageContextForAI(contentScriptResponse.data as PageContext);
+    }
+
+    // Run local Privacy Shield scan
+    const scanResult = PrivacyShield.scanOnly(sanitizedContext);
+
+    sendResponse({
+      success: true,
+      message: `Privacy scan complete: ${scanResult.summary.totalRedactedCount} sensitive item(s) detected.`,
+      data: {
+        findings: scanResult.findings,
+        summary: scanResult.summary,
+        scannedAt: scanResult.scannedAt
+      },
+      timestamp: Date.now()
+    });
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : 'Privacy scan failure';
+    sendResponse({
+      success: false,
+      error: `Privacy scan error: ${errMsg}`,
       timestamp: Date.now()
     });
   }

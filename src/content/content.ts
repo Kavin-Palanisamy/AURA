@@ -1064,6 +1064,20 @@ function getAuraStyles(): string {
       white-space: pre-wrap;
     }
 
+    .aura-privacy-transparency-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #6ee7b7;
+      font-size: 9.5px;
+      font-weight: 500;
+      width: fit-content;
+    }
+
     .aura-show-me-btn {
       align-self: flex-start;
       background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%);

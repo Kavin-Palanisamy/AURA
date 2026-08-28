@@ -25,7 +25,13 @@ import {
   Eye,
   EyeOff,
   Trash2,
-  Save
+  Save,
+  Mail,
+  Phone,
+  CreditCard,
+  Fingerprint,
+  Lock,
+  Binary
 } from 'lucide-react';
 import {
   AURA_ACTIONS,
@@ -34,13 +40,16 @@ import {
   AnalyzePageMessage,
   ToggleAssistantMessage,
   HighlightElementMessage,
+  ScanPrivacyMessage,
   TestConnectionResponseData,
-  AnalyzePageResponseData
+  AnalyzePageResponseData,
+  ScanPrivacyResponseData
 } from '../types/messages';
 import type { PageContext } from '../types/page';
+import type { PrivacyFinding, PrivacyScanSummary } from '../privacy/types';
 import { fetchAvailableGeminiModels } from '../ai/geminiProvider';
 
-type ActiveTabMode = 'analyze' | 'test' | 'settings';
+type ActiveTabMode = 'analyze' | 'privacy' | 'settings' | 'test';
 type StatusState = 'idle' | 'loading' | 'success' | 'error';
 
 interface DiagnosticStep {
@@ -80,6 +89,13 @@ export default function Popup() {
   const [showKey, setShowKey] = useState<boolean>(false);
   const [settingsFeedback, setSettingsFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Day 5 Privacy Shield State
+  const [privacyStatus, setPrivacyStatus] = useState<StatusState>('idle');
+  const [privacyMessage, setPrivacyMessage] = useState<string>('');
+  const [privacySummary, setPrivacySummary] = useState<PrivacyScanSummary | null>(null);
+  const [privacyFindings, setPrivacyFindings] = useState<PrivacyFinding[]>([]);
+  const [lastScannedTime, setLastScannedTime] = useState<number | null>(null);
+
   // Active Tab Info
   const [activeTabTitle, setActiveTabTitle] = useState<string>('Detecting active tab...');
   const [activeTabUrl, setActiveTabUrl] = useState<string>('');
@@ -102,7 +118,6 @@ export default function Popup() {
         }
         if (data?.aura_gemini_model) {
           const storedModel = data.aura_gemini_model;
-          // Auto-migrate away from deprecated 1.5/2.0 shut-down models
           if (['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'].includes(storedModel)) {
             setModelSelect('gemini-2.5-flash');
             await chrome.storage.local.set({ aura_gemini_model: 'gemini-2.5-flash' });
@@ -170,7 +185,7 @@ export default function Popup() {
       if (typeof chrome !== 'undefined' && chrome.storage?.local) {
         await chrome.storage.local.remove(['aura_gemini_api_key', 'aura_gemini_model']);
         setApiKeyInput('');
-        setModelSelect('gemini-1.5-flash');
+        setModelSelect('gemini-2.5-flash');
         setHasStoredKey(false);
         setSettingsFeedback({ type: 'success', text: 'API key cleared from storage.' });
         setTimeout(() => setSettingsFeedback(null), 3000);
@@ -204,6 +219,53 @@ export default function Popup() {
       }
     } catch (err) {
       console.warn('Could not query active tab:', err);
+    }
+  };
+
+  /**
+   * Day 5: Run Local Privacy Shield Scan
+   */
+  const handleScanPrivacy = async () => {
+    setPrivacyStatus('loading');
+    setPrivacyMessage('Running local privacy scan on webpage context...');
+
+    try {
+      if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
+        throw new Error('Chrome runtime messaging is unavailable.');
+      }
+
+      const message: ScanPrivacyMessage = {
+        action: AURA_ACTIONS.SCAN_PRIVACY
+      };
+
+      const response: AuraResponse<ScanPrivacyResponseData> = await new Promise(
+        (resolve, reject) => {
+          chrome.runtime.sendMessage(message, (res) => {
+            const lastError = chrome.runtime.lastError;
+            if (lastError) reject(new Error(lastError.message));
+            else resolve(res);
+          });
+        }
+      );
+
+      if (response && response.success && response.data) {
+        setPrivacyStatus('success');
+        setPrivacySummary(response.data.summary);
+        setPrivacyFindings(response.data.findings || []);
+        setLastScannedTime(response.data.scannedAt);
+        setPrivacyMessage(
+          response.data.summary.totalRedactedCount > 0
+            ? `Protected: ${response.data.summary.totalRedactedCount} sensitive item(s) found and redacted locally.`
+            : 'Clean: No sensitive personal data patterns detected in page metadata.'
+        );
+      } else {
+        setPrivacyStatus('error');
+        setPrivacyMessage(response?.error || 'Privacy scan failed to inspect page.');
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Privacy scan error';
+      setPrivacyStatus('error');
+      setPrivacyMessage(errMsg);
     }
   };
 
@@ -415,8 +477,8 @@ export default function Popup() {
               <h1 className="text-base font-bold tracking-tight bg-gradient-to-r from-white via-slate-100 to-indigo-200 bg-clip-text text-transparent">
                 AURA
               </h1>
-              <span className="text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded-full bg-indigo-950/90 text-indigo-300 border border-indigo-700/50">
-                Day 4 AI
+              <span className="text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded-full bg-emerald-950/90 text-emerald-300 border border-emerald-700/50">
+                Day 5 Shield
               </span>
             </div>
             <p className="text-[10.5px] text-slate-400 font-medium">
@@ -428,44 +490,62 @@ export default function Popup() {
         {/* Live Status Badge */}
         <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-[9.5px] text-emerald-400">
           <ShieldCheck className="w-3 h-3 text-emerald-400" />
-          <span className="font-medium">{hasStoredKey ? 'AI Ready' : 'Privacy-First'}</span>
+          <span className="font-medium">Shield Active</span>
         </div>
       </header>
 
-      {/* 3-Tab Switcher */}
-      <div className="grid grid-cols-3 gap-1 p-1 bg-slate-900/90 rounded-lg border border-slate-800 text-xs font-semibold">
+      {/* 4-Tab Switcher */}
+      <div className="grid grid-cols-4 gap-1 p-1 bg-slate-900/90 rounded-lg border border-slate-800 text-xs font-semibold">
         <button
           onClick={() => setActiveTabMode('analyze')}
-          className={`py-1.5 px-2 rounded-md transition-all flex items-center justify-center gap-1 ${
+          className={`py-1.5 px-1.5 rounded-md transition-all flex items-center justify-center gap-1 ${
             activeTabMode === 'analyze'
               ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
+          title="Inspect webpage interactive structure"
         >
           <Search className="w-3 h-3" />
-          <span className="text-[11px]">Analysis</span>
+          <span className="text-[10px]">Analyze</span>
         </button>
+
         <button
-          onClick={() => setActiveTabMode('test')}
-          className={`py-1.5 px-2 rounded-md transition-all flex items-center justify-center gap-1 ${
-            activeTabMode === 'test'
-              ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
+          onClick={() => setActiveTabMode('privacy')}
+          className={`py-1.5 px-1.5 rounded-md transition-all flex items-center justify-center gap-1 ${
+            activeTabMode === 'privacy'
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
+          title="Privacy Shield dashboard & sensitive data detection"
         >
-          <Zap className="w-3 h-3" />
-          <span className="text-[11px]">Test</span>
+          <ShieldCheck className="w-3 h-3 text-emerald-400" />
+          <span className="text-[10px]">Privacy</span>
         </button>
+
         <button
           onClick={() => setActiveTabMode('settings')}
-          className={`py-1.5 px-2 rounded-md transition-all flex items-center justify-center gap-1 ${
+          className={`py-1.5 px-1.5 rounded-md transition-all flex items-center justify-center gap-1 ${
             activeTabMode === 'settings'
               ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
+          title="AI model and Gemini API Key configuration"
         >
           <KeyRound className="w-3 h-3" />
-          <span className="text-[11px]">AI Settings</span>
+          <span className="text-[10px]">Settings</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTabMode('test')}
+          className={`py-1.5 px-1.5 rounded-md transition-all flex items-center justify-center gap-1 ${
+            activeTabMode === 'test'
+              ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+          }`}
+          title="Diagnostic connection pipeline test"
+        >
+          <Zap className="w-3 h-3" />
+          <span className="text-[10px]">Test</span>
         </button>
       </div>
 
@@ -479,7 +559,7 @@ export default function Popup() {
           <button
             onClick={fetchActiveTabInfo}
             title="Refresh tab info"
-            className="hover:text-slate-200 transition-colors p-0.5"
+            className="hover:text-slate-200 transition-colors p-0.5 cursor-pointer"
           >
             <RefreshCw className="w-3 h-3 text-slate-500 hover:text-slate-300" />
           </button>
@@ -612,7 +692,7 @@ export default function Popup() {
                       <button
                         key={btn.id}
                         onClick={() => handleHighlight(btn.id)}
-                        className="text-[10.5px] px-2 py-1 rounded bg-slate-800 hover:bg-indigo-900/60 border border-slate-700 hover:border-indigo-500 text-slate-200 flex items-center gap-1 transition-colors truncate max-w-[170px]"
+                        className="text-[10.5px] px-2 py-1 rounded bg-slate-800 hover:bg-indigo-900/60 border border-slate-700 hover:border-indigo-500 text-slate-200 flex items-center gap-1 transition-colors truncate max-w-[170px] cursor-pointer"
                         title={`Highlight ${btn.id}: ${btn.text}`}
                       >
                         <Focus className="w-3 h-3 text-cyan-400 shrink-0" />
@@ -627,7 +707,7 @@ export default function Popup() {
               <div className="mt-1 border-t border-slate-800/60 pt-2">
                 <button
                   onClick={() => setIsJsonOpen(!isJsonOpen)}
-                  className="w-full flex items-center justify-between text-[11px] font-medium text-slate-400 hover:text-slate-200 transition-colors py-1"
+                  className="w-full flex items-center justify-between text-[11px] font-medium text-slate-400 hover:text-slate-200 transition-colors py-1 cursor-pointer"
                 >
                   <span className="flex items-center gap-1.5">
                     <Layers className="w-3 h-3 text-indigo-400" />
@@ -641,7 +721,7 @@ export default function Popup() {
                     <button
                       onClick={handleCopyJson}
                       title="Copy JSON"
-                      className="absolute top-2 right-2 p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                      className="absolute top-2 right-2 p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
                     >
                       {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                     </button>
@@ -668,83 +748,134 @@ export default function Popup() {
         </div>
       )}
 
-      {/* VIEW 2: DAY 1 CONNECTION TEST */}
-      {activeTabMode === 'test' && (
-        <div className="flex flex-col gap-3 animate-fade-in">
+      {/* VIEW 2: DAY 5 PRIVACY SHIELD DASHBOARD */}
+      {activeTabMode === 'privacy' && (
+        <div className="flex flex-col gap-2.5 animate-fade-in">
+          {/* Action Button: Scan Current Page */}
           <button
-            id="aura-test-connection-btn"
-            onClick={handleTestConnection}
-            disabled={connStatus === 'loading'}
-            className="aura-btn-gradient relative w-full py-2.5 px-4 rounded-xl text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+            onClick={handleScanPrivacy}
+            disabled={privacyStatus === 'loading' || isRestrictedTab}
+            className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 py-2.5 px-3 rounded-xl text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-950/50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-all"
           >
-            {connStatus === 'loading' ? (
+            {privacyStatus === 'loading' ? (
               <>
-                <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                <span>Transmitting Message Flow...</span>
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                <span>Running Local Privacy Shield Scan...</span>
               </>
             ) : (
               <>
-                <Zap className="w-4 h-4 text-cyan-200 fill-cyan-300/30" />
-                <span>Test Connection</span>
+                <ShieldCheck className="w-4 h-4 text-emerald-200" />
+                <span>Scan Current Page (Local Only)</span>
               </>
             )}
           </button>
 
-          <section className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-800/70 flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
-                <Layers className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Communication Pipeline</span>
+          {/* Privacy Scan Results Card */}
+          {privacySummary ? (
+            <div className="bg-slate-900/70 rounded-xl p-3 border border-slate-800/80 flex flex-col gap-2">
+              <div className="flex items-center justify-between border-b border-slate-800/60 pb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                    SCAN SUMMARY
+                  </span>
+                </div>
+                {lastScannedTime && (
+                  <span className="text-[9px] text-slate-500 font-mono">
+                    {new Date(lastScannedTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </span>
+                )}
               </div>
-              {connLatency !== null && (
-                <span className="text-[9.5px] font-mono text-cyan-400 bg-cyan-950/50 px-1.5 py-0.5 rounded border border-cyan-800/40">
-                  {connLatency}ms
-                </span>
+
+              {/* Status Message */}
+              <p className="text-[11px] text-slate-300 leading-snug">
+                {privacyMessage}
+              </p>
+
+              {/* 6-Metric Sensitive Data Grid */}
+              <div className="grid grid-cols-3 gap-1.5 mt-1">
+                <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
+                  <Mail className="w-3.5 h-3.5 text-indigo-400 mb-0.5" />
+                  <span className="text-sm font-bold text-slate-100">{privacySummary.emailCount}</span>
+                  <span className="text-[9px] text-slate-400">Emails</span>
+                </div>
+                <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
+                  <Phone className="w-3.5 h-3.5 text-cyan-400 mb-0.5" />
+                  <span className="text-sm font-bold text-slate-100">{privacySummary.phoneCount}</span>
+                  <span className="text-[9px] text-slate-400">Phones</span>
+                </div>
+                <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
+                  <CreditCard className="w-3.5 h-3.5 text-amber-400 mb-0.5" />
+                  <span className="text-sm font-bold text-slate-100">{privacySummary.creditCardCount}</span>
+                  <span className="text-[9px] text-slate-400">Cards (Luhn)</span>
+                </div>
+                <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
+                  <Fingerprint className="w-3.5 h-3.5 text-emerald-400 mb-0.5" />
+                  <span className="text-sm font-bold text-slate-100">{privacySummary.aadhaarCount}</span>
+                  <span className="text-[9px] text-slate-400">Aadhaar-like</span>
+                </div>
+                <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
+                  <KeyRound className="w-3.5 h-3.5 text-rose-400 mb-0.5" />
+                  <span className="text-sm font-bold text-slate-100">{privacySummary.apiKeyCount}</span>
+                  <span className="text-[9px] text-slate-400">API Keys</span>
+                </div>
+                <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
+                  <Binary className="w-3.5 h-3.5 text-purple-400 mb-0.5" />
+                  <span className="text-sm font-bold text-slate-100">{privacySummary.tokenCount}</span>
+                  <span className="text-[9px] text-slate-400">Tokens</span>
+                </div>
+              </div>
+
+              {/* Findings List (Metadata Only) */}
+              {privacyFindings.length > 0 && (
+                <div className="mt-1 flex flex-col gap-1">
+                  <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
+                    Redacted Locations ({privacyFindings.length})
+                  </span>
+                  <div className="flex flex-col gap-1 max-h-24 overflow-y-auto pr-1">
+                    {privacyFindings.map((f, idx) => (
+                      <div key={idx} className="p-1.5 rounded bg-slate-950/90 border border-slate-800 text-[10px] flex items-center justify-between">
+                        <span className="font-mono text-cyan-300 uppercase">[{f.type.replace('_', ' ')}]</span>
+                        <span className="text-slate-400 truncate max-w-[200px]" title={f.location}>{f.location}</span>
+                        <span className="text-emerald-400 text-[9px] font-semibold">Redacted</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
-
-            <div className="grid grid-cols-2 gap-1.5 text-[10.5px]">
-              {testSteps.map((step, idx) => (
-                <div
-                  key={idx}
-                  className={`p-2 rounded-lg border transition-all duration-200 ${
-                    step.status === 'success'
-                      ? 'bg-emerald-950/30 border-emerald-800/50 text-emerald-300'
-                      : step.status === 'active'
-                      ? 'bg-indigo-950/40 border-indigo-700/60 text-indigo-300 animate-pulse'
-                      : step.status === 'error'
-                      ? 'bg-rose-950/30 border-rose-800/50 text-rose-300'
-                      : 'bg-slate-950/40 border-slate-800/50 text-slate-400'
-                  }`}
-                >
-                  <div className="flex items-center justify-between font-medium">
-                    <span className="truncate">{step.label}</span>
-                    {step.status === 'success' && <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />}
-                    {step.status === 'active' && <Radio className="w-3 h-3 text-indigo-400 animate-spin shrink-0" />}
-                    {step.status === 'error' && <AlertCircle className="w-3 h-3 text-rose-400 shrink-0" />}
-                  </div>
-                  <p className="text-[9px] opacity-75 mt-0.5 truncate">{step.detail}</p>
-                </div>
-              ))}
+          ) : (
+            <div className="p-3.5 rounded-xl border border-dashed border-slate-800 text-center flex flex-col items-center gap-1 text-slate-500 text-xs">
+              <ShieldCheck className="w-4 h-4 text-emerald-500" />
+              <p>Click "Scan Current Page" to run local sensitive data detection without transmitting anything to AI.</p>
             </div>
+          )}
 
-            {connStatus !== 'idle' && (
-              <div
-                className={`p-2 rounded-lg text-xs flex items-start gap-2 border ${
-                  connStatus === 'success'
-                    ? 'bg-emerald-950/50 border-emerald-800/60 text-emerald-200'
-                    : connStatus === 'error'
-                    ? 'bg-rose-950/50 border-rose-800/60 text-rose-200'
-                    : 'bg-indigo-950/50 border-indigo-800/60 text-indigo-200'
-                }`}
-              >
-                {connStatus === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />}
-                {connStatus === 'error' && <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />}
-                {connStatus === 'loading' && <RefreshCw className="w-3.5 h-3.5 text-indigo-400 animate-spin shrink-0 mt-0.5" />}
-                <span className="leading-snug text-[10.5px]">{connMessage}</span>
-              </div>
-            )}
-          </section>
+          {/* Immutable Guarantees Checklist */}
+          <div className="bg-slate-900/40 rounded-xl p-3 border border-slate-800/60 flex flex-col gap-1.5 text-[11px] text-slate-400">
+            <div className="flex items-center gap-1.5 text-slate-200 font-semibold text-xs">
+              <Lock className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Privacy Shield Guarantees</span>
+            </div>
+            <ul className="flex flex-col gap-1 text-[10.5px] text-slate-300">
+              <li className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                <span>Form values (<code className="text-cyan-300">input.value</code>) are never collected</span>
+              </li>
+              <li className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                <span>Raw HTML & DOM nodes are never sent</span>
+              </li>
+              <li className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                <span>Sensitive text is detected & redacted locally</span>
+              </li>
+              <li className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                <span>Luhn checksum validates cards before redacting</span>
+              </li>
+            </ul>
+          </div>
         </div>
       )}
 
@@ -784,7 +915,7 @@ export default function Popup() {
               <button
                 type="button"
                 onClick={() => setShowKey(!showKey)}
-                className="absolute right-2.5 text-slate-400 hover:text-slate-200 p-1"
+                className="absolute right-2.5 text-slate-400 hover:text-slate-200 p-1 cursor-pointer"
                 title={showKey ? 'Hide key' : 'Show key'}
               >
                 {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -881,10 +1012,90 @@ export default function Popup() {
         </div>
       )}
 
+      {/* VIEW 4: DAY 1 CONNECTION TEST */}
+      {activeTabMode === 'test' && (
+        <div className="flex flex-col gap-3 animate-fade-in">
+          <button
+            id="aura-test-connection-btn"
+            onClick={handleTestConnection}
+            disabled={connStatus === 'loading'}
+            className="aura-btn-gradient relative w-full py-2.5 px-4 rounded-xl text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+          >
+            {connStatus === 'loading' ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                <span>Transmitting Message Flow...</span>
+              </>
+            ) : (
+              <>
+                <Zap className="w-4 h-4 text-cyan-200 fill-cyan-300/30" />
+                <span>Test Connection</span>
+              </>
+            )}
+          </button>
+
+          <section className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-800/70 flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+                <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Communication Pipeline</span>
+              </div>
+              {connLatency !== null && (
+                <span className="text-[9.5px] font-mono text-cyan-400 bg-cyan-950/50 px-1.5 py-0.5 rounded border border-cyan-800/40">
+                  {connLatency}ms
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-1.5 text-[10.5px]">
+              {testSteps.map((step, idx) => (
+                <div
+                  key={idx}
+                  className={`p-2 rounded-lg border transition-all duration-200 ${
+                    step.status === 'success'
+                      ? 'bg-emerald-950/30 border-emerald-800/50 text-emerald-300'
+                      : step.status === 'active'
+                      ? 'bg-indigo-950/40 border-indigo-700/60 text-indigo-300 animate-pulse'
+                      : step.status === 'error'
+                      ? 'bg-rose-950/30 border-rose-800/50 text-rose-300'
+                      : 'bg-slate-950/40 border-slate-800/50 text-slate-400'
+                  }`}
+                >
+                  <div className="flex items-center justify-between font-medium">
+                    <span className="truncate">{step.label}</span>
+                    {step.status === 'success' && <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />}
+                    {step.status === 'active' && <Radio className="w-3 h-3 text-indigo-400 animate-spin shrink-0" />}
+                    {step.status === 'error' && <AlertCircle className="w-3 h-3 text-rose-400 shrink-0" />}
+                  </div>
+                  <p className="text-[9px] opacity-75 mt-0.5 truncate">{step.detail}</p>
+                </div>
+              ))}
+            </div>
+
+            {connStatus !== 'idle' && (
+              <div
+                className={`p-2 rounded-lg text-xs flex items-start gap-2 border ${
+                  connStatus === 'success'
+                    ? 'bg-emerald-950/50 border-emerald-800/60 text-emerald-200'
+                    : connStatus === 'error'
+                    ? 'bg-rose-950/50 border-rose-800/60 text-rose-200'
+                    : 'bg-indigo-950/50 border-indigo-800/60 text-indigo-200'
+                }`}
+              >
+                {connStatus === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />}
+                {connStatus === 'error' && <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />}
+                {connStatus === 'loading' && <RefreshCw className="w-3.5 h-3.5 text-indigo-400 animate-spin shrink-0 mt-0.5" />}
+                <span className="leading-snug text-[10.5px]">{connMessage}</span>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+
       {/* Footer Info */}
       <footer className="flex items-center justify-between text-[9.5px] text-slate-500 pt-1 border-t border-slate-900">
-        <span>Manifest V3 &bull; React &bull; Gemini AI</span>
-        <span className="font-mono text-slate-400">Day 4 Complete</span>
+        <span>Manifest V3 &bull; Privacy Shield &bull; Gemini AI</span>
+        <span className="font-mono text-slate-400">Day 5 Complete</span>
       </footer>
     </div>
   );

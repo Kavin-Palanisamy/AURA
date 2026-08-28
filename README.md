@@ -1,6 +1,6 @@
 # 🌟 AURA — AI Universal Web Accessibility & Privacy Assistant
 
-> **Day 1, Day 2, Day 3 & Day 4 Complete**: Manifest V3 Chrome Extension architecture, React + TypeScript Popup UI, Service Worker, Content Script, Shadow DOM Banner Overlay, Privacy-First **Page Intelligence Analyzer**, Live **In-Page Floating Assistant**, **Element Highlighting with Guidance Tooltips**, and **Google Gemini AI Navigation Intelligence**.
+> **Day 1, Day 2, Day 3, Day 4 & Day 5 Complete**: Manifest V3 Chrome Extension architecture, React + TypeScript Popup UI, Service Worker, Content Script, Shadow DOM Banner Overlay, Privacy-First **Page Intelligence Analyzer**, Live **In-Page Floating Assistant**, **Element Highlighting with Guidance Tooltips**, **Google Gemini AI Navigation Intelligence**, and Local **Privacy Shield (Sensitive Data Detection & Redaction)**.
 
 ---
 
@@ -9,7 +9,8 @@
 - **Frontend Framework**: React 18
 - **Language**: TypeScript (Strict mode)
 - **Bundler & Build Tool**: Vite
-- **AI Engine**: Google Gemini REST API (`gemini-2.5-flash` default, `gemini-2.5-flash-lite`, `gemini-2.5-pro`)
+- **AI Engine**: Google Gemini REST API (`gemini-2.5-flash` default, `gemini-2.5-flash-lite`, `gemini-2.5-pro` with dynamic account model discovery)
+- **Privacy Engine**: Local regex scanners + Luhn algorithm checksum validator (100% in-extension)
 - **Styling**: Tailwind CSS (Popup) + Scoped Shadow DOM CSS (In-Page Floating Assistant, AI Chat & Highlighting)
 - **Icons**: Lucide React / Scoped SVG icons
 
@@ -34,98 +35,104 @@ AURA/
 │   └── icons/                         # High-res extension icons
 ├── scripts/
 │   ├── generate-icons.js              # Icon generator script
-│   └── test-analyzer.js               # Analyzer validation script
+│   ├── verify-day4.ts                 # AI Intelligence verification suite
+│   └── verify-day5.ts                 # Privacy Shield verification suite
 ├── src/
 │   ├── ai/
-│   │   ├── geminiProvider.ts          # Google Gemini REST API provider
+│   │   ├── geminiProvider.ts          # Google Gemini REST API provider & dynamic model discovery
 │   │   ├── promptBuilder.ts           # System prompt & structured user context builder
-│   │   ├── provider.ts                # AI Provider registry & sanitizePageContextForAI()
-│   │   ├── responseValidator.ts       # Untrusted JSON validator & targetId verification
-│   │   └── types.ts                   # SanitizedPageContext & AuraAIResponse types
+│   │   ├── provider.ts                # AI Provider registry & factory
+│   │   ├── responseValidator.ts       # Untrusted JSON validator & anti-hallucination firewall
+│   │   ├── sanitizer.ts               # Context sanitization module for AI
+│   │   └── types.ts                   # SanitizedPageContext, GeminiModel, & AuraAIResponse types
 │   ├── background/
-│   │   └── serviceWorker.ts           # Background router (Test, Analyze, Highlight, Toggle, Ask AI)
+│   │   └── serviceWorker.ts           # Background router (Test, Analyze, Highlight, Toggle, Ask AI, Scan Privacy)
 │   ├── content/
 │   │   ├── content.ts                 # Unified Shadow DOM host & message listeners
 │   │   ├── elementRegistry.ts         # In-memory AURA Element Registry (WeakMap/Map)
-│   │   ├── floatingAssistant.ts       # In-Page Assistant Panel (Ask AI + Page Elements views)
+│   │   ├── floatingAssistant.ts       # In-Page Assistant Panel (Ask AI + Page Elements views + Privacy Badge)
 │   │   ├── highlighter.ts             # Smooth scroll, independent overlay & guidance tooltip
-│   │   └── pageAnalyzer.ts            # Privacy-first DOM structure extractors & visibility filter
+│   │   ├── pageAnalyzer.ts            # Privacy-first DOM structure extractors & visibility filter
+│   │   └── sanitizer.ts               # Inlined sanitization layer for content scripts
 │   ├── popup/
 │   │   ├── index.css                  # Tailwind & glow utility styles
 │   │   ├── index.html                 # Popup HTML source template
 │   │   ├── main.tsx                   # React mount root
-│   │   └── Popup.tsx                  # React Popup (Analysis + Connection Test + AI Settings)
+│   │   └── Popup.tsx                  # React Popup (Analyze + Privacy Shield + AI Settings + Test Connection)
+│   ├── privacy/
+│   │   ├── privacyShield.ts           # Privacy Shield orchestrator & immutable protection pipeline
+│   │   ├── redactor.ts                # Pure text & context redaction engine
+│   │   ├── scanner.ts                 # Local sensitive data pattern detection & Luhn validator
+│   │   └── types.ts                   # Privacy finding, summary, and protected context contracts
 │   └── types/
 │       ├── messages.ts                # Discriminated union types for Chrome runtime messaging
 │       └── page.ts                    # PageContext and element data models
-├── .env.example                       # Environment variables template
-├── manifest.json                      # Manifest V3 specification
-├── package.json                       # Dependencies and npm scripts
-├── postcss.config.js                  # PostCSS configuration
-├── tailwind.config.js                 # Tailwind theme configuration
-├── tsconfig.json                      # TypeScript compiler settings
+├── manifest.json                      # Extension manifest (storage permission added)
 ├── vite.config.ts                     # Multi-entry Vite bundler configuration
-└── README.md                          # Documentation & setup guide
+└── package.json                       # Scripts and project dependencies
 ```
 
 ---
 
-## 🛡️ Privacy & Safety Guarantees
+## 🛡️ Day 5: Privacy Shield Architecture
 
-1. **Zero User Form Value Extraction**: Strictly ignores `input.value`, `textarea.value`, selected values, passwords, and user-entered content. Password fields only log `type: "password"` metadata.
-2. **Explicit AI Sanitization Layer (`sanitizePageContextForAI`)**: Converts in-memory `PageContext` into a clean, minimized `SanitizedPageContext`. Under no circumstances are raw HTML, DOM nodes, cookies, or auth tokens transmitted to the AI.
-3. **Untrusted AI Response Validation**: All AI responses are strictly validated against a structured JSON schema. Any hallucinated or non-existent element IDs are immediately rejected, preventing invalid highlights or arbitrary execution.
-4. **Secure Local API Key Storage**: The Gemini API key is stored strictly within browser `chrome.storage.local`. It is never logged, never exposed to webpage scripts, and never sent to external servers other than the official Google Gemini API endpoint.
-5. **Zero Host DOM/CSS Mutation**: The highlight overlay and guidance tooltip are rendered inside the isolated Shadow DOM at fixed viewport coordinates derived from `getBoundingClientRect()`. Target elements never receive custom inline styles or permanent classes.
+The **Privacy Shield** is a local security firewall that intercepts every interaction before data is sent to external AI providers.
 
----
-
-## ⚡ Communication Pipelines
-
-### Pipeline 1: AI Q&A & Navigation (Day 4)
-```text
-[ Floating Assistant ("Ask AI") ]
+```
+PageContext (In-Memory)
        │
-       │  1. In-memory page analysis: analyzePage()
-       │  2. Privacy sanitization: sanitizePageContextForAI(context)
        ▼
-[ Background Service Worker ]
-       │  3. Retrieves Gemini API Key from chrome.storage.local
-       │  4. GeminiProvider.ask() via Google Gemini REST API
+sanitizePageContextForAI() (Strips all DOM nodes & private values)
+       │
        ▼
-[ Response Validator (responseValidator.ts) ]
-       │  5. Validates JSON schema & verifies targetId in validElementIds
+PrivacyShield.protect() [100% Local inside Chrome Extension]
+       │
+       ├── scanner.ts: Local Pattern Matching & Luhn Checksum
+       │   ├── Email Detection: [EMAIL_REDACTED]
+       │   ├── Phone Numbers: [PHONE_REDACTED]
+       │   ├── Credit Cards (Luhn validated): [CARD_REDACTED]
+       │   ├── Aadhaar-like 12-digit numbers: [AADHAAR_REDACTED]
+       │   └── API Keys / Tokens: [API_KEY_REDACTED] / [TOKEN_REDACTED]
+       │
+       ├── redactor.ts: In-place text redaction across headings, buttons, links, inputs, forms
+       └── Deep Immutability: Original context is never mutated
+       │
        ▼
-[ Floating Assistant ]
-       │  6. Renders AI response & "Show me" action button
+Protected AI Context (Only redacted metadata sent)
+       │
        ▼
-[ User clicks "Show me" ]
-       │  7. Invokes existing highlightElementById(targetId)
+Google Gemini REST API (gemini-2.5-flash / dynamic fallback)
+       │
        ▼
-[ Webpage Overlay (Smooth scroll, glowing aura box, guidance tooltip) ]
+responseValidator.ts (Anti-Hallucination & targetId validation)
+       │
+       ▼
+In-Page Assistant UI (Transparency Badge: "🛡️ Privacy Shield active • X redacted")
 ```
 
 ---
 
-## 🚀 Getting Started
+## 🚀 How to Run & Test
 
-### 1. Install Dependencies
-```bash
-npm install
-```
+1. **Install Dependencies**:
+   ```bash
+   npm install
+   ```
 
-### 2. Build the Extension
-```bash
-npm run build
-```
+2. **Verify Day 4 & Day 5 Test Suites**:
+   ```bash
+   npx tsx scripts/verify-day4.ts
+   npx tsx scripts/verify-day5.ts
+   ```
 
-### 3. Load into Google Chrome
-1. Open Google Chrome and go to `chrome://extensions`
-2. Turn on **Developer mode** (top-right).
-3. Click **Load unpacked** and select the **`dist`** folder (`c:\Users\kavin\Documents\AURA\dist`).
-4. Click the **AURA** extension icon in the toolbar, switch to the **AI Settings** tab, and enter your Google Gemini API Key.
-5. Open any normal webpage (e.g. `https://example.com` or `https://google.com`).
-6. Click the circular **AURA floating button** in the bottom-right corner:
-   - Type any question in the **Ask AI** tab (e.g. *"Where can I log in?"*, *"Find the search button"*, *"What is this page about?"*).
-   - AURA analyzes the page in memory, consults Gemini safely, and provides a clear answer with a **"Show me"** button.
-   - Click **"Show me"** to smoothly scroll to and highlight the element!
+3. **Check Types & Build**:
+   ```bash
+   npm run type-check
+   npm run build
+   ```
+
+4. **Load into Google Chrome**:
+   - Open Chrome and navigate to `chrome://extensions`.
+   - Enable **Developer mode** (top-right toggle).
+   - Click **Load unpacked** and select the `AURA/dist` directory.
+   - Click the **AURA** extension icon in your browser toolbar!

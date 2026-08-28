@@ -1,10 +1,11 @@
 /**
  * AURA Message Protocol Definitions
- * Manifest V3 Type-Safe Communication Layer (Day 1 - Day 4)
+ * Manifest V3 Type-Safe Communication Layer (Day 1 - Day 5)
  */
 
 import type { PageContext } from './page';
 import type { AuraAIResponse, SanitizedPageContext } from '../ai/types';
+import type { PrivacyFinding, PrivacyScanSummary } from '../privacy/types';
 
 export const AURA_ACTIONS = {
   TEST_CONNECTION: 'AURA_TEST_CONNECTION',
@@ -13,6 +14,7 @@ export const AURA_ACTIONS = {
   HIGHLIGHT_ELEMENT: 'AURA_HIGHLIGHT_ELEMENT',
   TOGGLE_ASSISTANT: 'AURA_TOGGLE_ASSISTANT',
   ASK_AI: 'AURA_ASK_AI',
+  SCAN_PRIVACY: 'AURA_SCAN_PRIVACY',
   PING: 'AURA_PING',
 } as const;
 
@@ -46,6 +48,10 @@ export interface ToggleAssistantPayload {
 export interface AskAIPayload {
   question: string;
   context: SanitizedPageContext;
+}
+
+export interface ScanPrivacyPayload {
+  context?: SanitizedPageContext;
 }
 
 export interface PingPayload {
@@ -82,6 +88,11 @@ export interface AskAIMessage {
   payload: AskAIPayload;
 }
 
+export interface ScanPrivacyMessage {
+  action: typeof AURA_ACTIONS.SCAN_PRIVACY;
+  payload?: ScanPrivacyPayload;
+}
+
 export interface PingMessage {
   action: typeof AURA_ACTIONS.PING;
   payload?: PingPayload;
@@ -94,6 +105,7 @@ export type AuraMessage =
   | HighlightElementMessage
   | ToggleAssistantMessage
   | AskAIMessage
+  | ScanPrivacyMessage
   | PingMessage;
 
 export interface AuraResponse<T = unknown> {
@@ -124,7 +136,16 @@ export interface HighlightElementResponseData {
   highlightedAt: number;
 }
 
-export type AskAIResponseData = AuraAIResponse;
+export interface AskAIResponseData extends AuraAIResponse {
+  privacySummary?: PrivacyScanSummary;
+  redactedCount?: number;
+}
+
+export interface ScanPrivacyResponseData {
+  findings: PrivacyFinding[];
+  summary: PrivacyScanSummary;
+  scannedAt: number;
+}
 
 /**
  * Type guard to check if an object is a valid AuraMessage

@@ -12,7 +12,6 @@
 
 import type { PageContext } from '../types/page';
 import type { AuraResponse, AskAIMessage, AskAIResponseData } from '../types/messages';
-import type { AuraAIResponse } from '../ai/types';
 import { analyzePage } from './pageAnalyzer';
 import { highlightElementById } from './highlighter';
 import { sanitizePageContextForAI } from './sanitizer';
@@ -31,7 +30,7 @@ export class FloatingAssistant {
 
   // AI state
   private isAiLoading = false;
-  private lastAiResponse: AuraAIResponse | null = null;
+  private lastAiResponse: AskAIResponseData | null = null;
   private lastAiQuestion = '';
   private aiError: string | null = null;
 
@@ -253,6 +252,19 @@ export class FloatingAssistant {
                     <span class="aura-ai-conf">${Math.round(this.lastAiResponse.confidence * 100)}% match</span>
                   </div>
                   <p class="aura-ai-text">${escapeHtml(this.lastAiResponse.answer)}</p>
+
+                  <!-- Day 5 Privacy Shield Transparency -->
+                  <div class="aura-privacy-transparency-pill">
+                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#34d399" stroke-width="2.2">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                    </svg>
+                    <span>Privacy Shield active ${
+                      this.lastAiResponse.redactedCount !== undefined && this.lastAiResponse.redactedCount > 0
+                        ? `• ${this.lastAiResponse.redactedCount} item(s) redacted`
+                        : '• 0 sensitive items detected'
+                    }</span>
+                  </div>
+
                   ${
                     this.lastAiResponse.action === 'highlight' && this.lastAiResponse.targetId
                       ? `
