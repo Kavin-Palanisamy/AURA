@@ -33,10 +33,16 @@ let activeBannerContainer: HTMLDivElement | null = null;
 let bannerDismissTimer: number | null = null;
 
 /**
- * Initializes the unified Shadow DOM environment for AURA
+ * Initializes the unified Shadow DOM environment for AURA with duplicate host prevention
  */
 function initAuraRoot(): { host: HTMLDivElement; shadow: ShadowRoot } {
-  if (shadowHost && shadowRoot) {
+  // Defensive duplicate prevention: remove any existing unlinked host
+  const existingHost = document.getElementById('aura-inpage-host');
+  if (existingHost && existingHost !== shadowHost) {
+    existingHost.remove();
+  }
+
+  if (shadowHost && shadowRoot && shadowHost.isConnected) {
     return { host: shadowHost, shadow: shadowRoot };
   }
 

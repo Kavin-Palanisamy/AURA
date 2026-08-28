@@ -6,7 +6,7 @@
  * Strictly avoids modifying host webpage DOM with data-aura-id or other attributes.
  */
 
-class AuraElementRegistry {
+export class AuraElementRegistry {
   private elementToId = new WeakMap<Element, string>();
   private idToElement = new Map<string, Element>();
   private counters: Record<string, number> = {};

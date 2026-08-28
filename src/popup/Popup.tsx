@@ -31,7 +31,9 @@ import {
   CreditCard,
   Fingerprint,
   Lock,
-  Binary
+  Binary,
+  Sun,
+  Moon
 } from 'lucide-react';
 import {
   AURA_ACTIONS,
@@ -47,6 +49,7 @@ import {
 } from '../types/messages';
 import type { PageContext } from '../types/page';
 import type { PrivacyFinding, PrivacyScanSummary } from '../privacy/types';
+import type { ThemeMode } from '../types/theme';
 import { fetchAvailableGeminiModels } from '../ai/geminiProvider';
 
 type ActiveTabMode = 'analyze' | 'privacy' | 'settings' | 'test';
@@ -60,6 +63,9 @@ interface DiagnosticStep {
 
 export default function Popup() {
   const [activeTabMode, setActiveTabMode] = useState<ActiveTabMode>('analyze');
+
+  // Day 6 Theme State
+  const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
 
   // Day 1 Connection Test State
   const [connStatus, setConnStatus] = useState<StatusState>('idle');
@@ -103,13 +109,13 @@ export default function Popup() {
 
   useEffect(() => {
     fetchActiveTabInfo();
-    loadStoredApiKey();
+    loadStoredSettings();
   }, []);
 
-  const loadStoredApiKey = async () => {
+  const loadStoredSettings = async () => {
     try {
       if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-        const data = await chrome.storage.local.get(['aura_gemini_api_key', 'aura_gemini_model']);
+        const data = await chrome.storage.local.get(['aura_gemini_api_key', 'aura_gemini_model', 'aura_theme_mode']);
         if (data?.aura_gemini_api_key) {
           setHasStoredKey(true);
           setApiKeyInput(data.aura_gemini_api_key);
@@ -125,9 +131,24 @@ export default function Popup() {
             setModelSelect(storedModel);
           }
         }
+        if (data?.aura_theme_mode) {
+          setThemeMode(data.aura_theme_mode as ThemeMode);
+        }
       }
     } catch (err) {
       console.warn('Could not read chrome.storage:', err);
+    }
+  };
+
+  const handleToggleTheme = async () => {
+    const nextTheme: ThemeMode = themeMode === 'dark' ? 'light' : 'dark';
+    setThemeMode(nextTheme);
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        await chrome.storage.local.set({ aura_theme_mode: nextTheme });
+      }
+    } catch (err) {
+      console.warn('Could not save theme preference:', err);
     }
   };
 
@@ -223,7 +244,7 @@ export default function Popup() {
   };
 
   /**
-   * Day 5: Run Local Privacy Shield Scan
+   * Day 5: Run Local Privacy Shield Scan (On-Demand Fresh Scan)
    */
   const handleScanPrivacy = async () => {
     setPrivacyStatus('loading');
@@ -358,7 +379,7 @@ export default function Popup() {
   };
 
   /**
-   * Day 2: Run Page Analyzer Flow
+   * Day 2: Run Page Analyzer Flow (Fresh on-demand context for SPA reliability)
    */
   const handleAnalyzePage = async () => {
     setAnalyzeStatus('loading');
@@ -455,53 +476,84 @@ export default function Popup() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const isLight = themeMode === 'light';
+
   return (
-    <div className="w-[390px] bg-slate-950 text-slate-100 p-4 flex flex-col gap-3 font-sans border border-slate-800/80 shadow-2xl relative overflow-hidden">
+    <div
+      className={`w-[390px] min-h-[500px] p-4 flex flex-col gap-3 font-sans border shadow-2xl relative overflow-hidden transition-colors duration-200 ${
+        isLight
+          ? 'bg-slate-50 text-slate-900 border-slate-300'
+          : 'bg-slate-950 text-slate-100 border-slate-800/80'
+      }`}
+    >
       {/* Background Ambient Glow */}
-      <div className="absolute -top-16 -right-16 w-48 h-48 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-cyan-600/15 rounded-full blur-3xl pointer-events-none" />
+      <div className={`absolute -top-16 -right-16 w-48 h-48 rounded-full blur-3xl pointer-events-none ${isLight ? 'bg-indigo-300/25' : 'bg-indigo-600/15'}`} />
+      <div className={`absolute -bottom-16 -left-16 w-48 h-48 rounded-full blur-3xl pointer-events-none ${isLight ? 'bg-cyan-300/25' : 'bg-cyan-600/15'}`} />
 
       {/* Header & Logo Section */}
-      <header className="flex items-center justify-between border-b border-slate-800/60 pb-2.5 relative z-10">
+      <header className={`flex items-center justify-between border-b pb-2.5 relative z-10 ${isLight ? 'border-slate-200' : 'border-slate-800/60'}`}>
         <div className="flex items-center gap-2.5">
           {/* Logo Mark */}
           <div className="relative flex items-center justify-center w-8.5 h-8.5 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-cyan-400 p-[1.5px] shadow-lg shadow-indigo-500/20">
-            <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
-              <Sparkles className="w-4 h-4 text-cyan-300 animate-pulse-glow" />
+            <div className={`w-full h-full rounded-[10px] flex items-center justify-center ${isLight ? 'bg-white' : 'bg-slate-950'}`}>
+              <Sparkles className={`w-4 h-4 animate-pulse-glow ${isLight ? 'text-indigo-600' : 'text-cyan-300'}`} />
             </div>
           </div>
 
           {/* Title & Subtitle */}
           <div>
             <div className="flex items-center gap-1.5">
-              <h1 className="text-base font-bold tracking-tight bg-gradient-to-r from-white via-slate-100 to-indigo-200 bg-clip-text text-transparent">
+              <h1 className={`text-base font-bold tracking-tight ${isLight ? 'text-slate-900' : 'bg-gradient-to-r from-white via-slate-100 to-indigo-200 bg-clip-text text-transparent'}`}>
                 AURA
               </h1>
-              <span className="text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded-full bg-emerald-950/90 text-emerald-300 border border-emerald-700/50">
-                Day 5 Shield
+              <span className={`text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded-full border ${isLight ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-emerald-950/90 text-emerald-300 border-emerald-700/50'}`}>
+                v1.0 Ready
               </span>
             </div>
-            <p className="text-[10.5px] text-slate-400 font-medium">
+            <p className={`text-[10.5px] font-medium ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
               Understand. Navigate. Protect.
             </p>
           </div>
         </div>
 
-        {/* Live Status Badge */}
-        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-[9.5px] text-emerald-400">
-          <ShieldCheck className="w-3 h-3 text-emerald-400" />
-          <span className="font-medium">Shield Active</span>
+        {/* Header Right Actions (Theme Toggle & Status) */}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={handleToggleTheme}
+            className={`p-1.5 rounded-lg border transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none ${
+              isLight
+                ? 'bg-slate-200/80 border-slate-300 text-slate-700 hover:bg-slate-300'
+                : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800'
+            }`}
+            title={`Switch to ${isLight ? 'Dark' : 'Light'} Mode`}
+            aria-label={`Switch to ${isLight ? 'Dark' : 'Light'} Mode`}
+          >
+            {isLight ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5 text-amber-300" />}
+          </button>
+
+          <div className={`flex items-center gap-1 px-2 py-1 rounded-full border text-[9.5px] font-medium ${isLight ? 'bg-emerald-100 border-emerald-300 text-emerald-800' : 'bg-slate-900 border-slate-800 text-emerald-400'}`}>
+            <ShieldCheck className="w-3 h-3 text-emerald-500" />
+            <span>{hasStoredKey ? 'AI Ready' : 'Protected'}</span>
+          </div>
         </div>
       </header>
 
-      {/* 4-Tab Switcher */}
-      <div className="grid grid-cols-4 gap-1 p-1 bg-slate-900/90 rounded-lg border border-slate-800 text-xs font-semibold">
+      {/* 4-Tab Switcher with WCAG Tablist Roles */}
+      <div
+        role="tablist"
+        aria-label="AURA Feature Sections"
+        className={`grid grid-cols-4 gap-1 p-1 rounded-lg border text-xs font-semibold ${isLight ? 'bg-slate-200/80 border-slate-300' : 'bg-slate-900/90 border-slate-800'}`}
+      >
         <button
+          role="tab"
+          id="tab-analyze"
+          aria-selected={activeTabMode === 'analyze'}
+          aria-controls="panel-analyze"
           onClick={() => setActiveTabMode('analyze')}
-          className={`py-1.5 px-1.5 rounded-md transition-all flex items-center justify-center gap-1 ${
+          className={`py-1.5 px-1.5 rounded-md transition-all flex items-center justify-center gap-1 focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none cursor-pointer ${
             activeTabMode === 'analyze'
               ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              : isLight ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-300/50' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
           title="Inspect webpage interactive structure"
         >
@@ -510,24 +562,32 @@ export default function Popup() {
         </button>
 
         <button
+          role="tab"
+          id="tab-privacy"
+          aria-selected={activeTabMode === 'privacy'}
+          aria-controls="panel-privacy"
           onClick={() => setActiveTabMode('privacy')}
-          className={`py-1.5 px-1.5 rounded-md transition-all flex items-center justify-center gap-1 ${
+          className={`py-1.5 px-1.5 rounded-md transition-all flex items-center justify-center gap-1 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:outline-none cursor-pointer ${
             activeTabMode === 'privacy'
               ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              : isLight ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-300/50' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
           title="Privacy Shield dashboard & sensitive data detection"
         >
-          <ShieldCheck className="w-3 h-3 text-emerald-400" />
+          <ShieldCheck className="w-3 h-3" />
           <span className="text-[10px]">Privacy</span>
         </button>
 
         <button
+          role="tab"
+          id="tab-settings"
+          aria-selected={activeTabMode === 'settings'}
+          aria-controls="panel-settings"
           onClick={() => setActiveTabMode('settings')}
-          className={`py-1.5 px-1.5 rounded-md transition-all flex items-center justify-center gap-1 ${
+          className={`py-1.5 px-1.5 rounded-md transition-all flex items-center justify-center gap-1 focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none cursor-pointer ${
             activeTabMode === 'settings'
               ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              : isLight ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-300/50' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
           title="AI model and Gemini API Key configuration"
         >
@@ -536,11 +596,15 @@ export default function Popup() {
         </button>
 
         <button
+          role="tab"
+          id="tab-test"
+          aria-selected={activeTabMode === 'test'}
+          aria-controls="panel-test"
           onClick={() => setActiveTabMode('test')}
-          className={`py-1.5 px-1.5 rounded-md transition-all flex items-center justify-center gap-1 ${
+          className={`py-1.5 px-1.5 rounded-md transition-all flex items-center justify-center gap-1 focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none cursor-pointer ${
             activeTabMode === 'test'
               ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              : isLight ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-300/50' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
           title="Diagnostic connection pipeline test"
         >
@@ -550,52 +614,51 @@ export default function Popup() {
       </div>
 
       {/* Target Tab Info Card */}
-      <section className="bg-slate-900/80 rounded-xl p-2.5 border border-slate-800/80 text-xs flex flex-col gap-1 backdrop-blur-sm">
-        <div className="flex items-center justify-between text-slate-400 text-[10.5px]">
+      <section className={`rounded-xl p-2.5 border text-xs flex flex-col gap-1 backdrop-blur-sm ${isLight ? 'bg-white/90 border-slate-200' : 'bg-slate-900/80 border-slate-800/80'}`}>
+        <div className={`flex items-center justify-between text-[10.5px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
           <div className="flex items-center gap-1.5">
-            <Monitor className="w-3.5 h-3.5 text-slate-400" />
-            <span className="font-medium text-slate-300">Active Webpage</span>
+            <Monitor className="w-3.5 h-3.5" />
+            <span className={`font-medium ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Active Webpage</span>
           </div>
           <button
             onClick={fetchActiveTabInfo}
             title="Refresh tab info"
-            className="hover:text-slate-200 transition-colors p-0.5 cursor-pointer"
+            aria-label="Refresh active webpage info"
+            className="hover:text-slate-900 dark:hover:text-slate-200 transition-colors p-0.5 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none rounded"
           >
-            <RefreshCw className="w-3 h-3 text-slate-500 hover:text-slate-300" />
+            <RefreshCw className={`w-3 h-3 ${isLight ? 'text-slate-400 hover:text-slate-700' : 'text-slate-500 hover:text-slate-300'}`} />
           </button>
         </div>
 
         <div className="flex items-center justify-between gap-2">
-          <span className="font-medium text-slate-200 truncate max-w-[290px]" title={activeTabTitle}>
+          <span className={`font-medium truncate max-w-[280px] ${isLight ? 'text-slate-900' : 'text-slate-200'}`} title={activeTabTitle}>
             {activeTabTitle}
           </span>
           {activeTabUrl && !isRestrictedTab && (
-            <span className="text-[9.5px] text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800/40 shrink-0">
+            <span className={`text-[9.5px] px-1.5 py-0.5 rounded border shrink-0 font-medium ${isLight ? 'bg-emerald-100 border-emerald-300 text-emerald-800' : 'text-emerald-400 bg-emerald-950/60 border-emerald-800/40'}`}>
               Ready
             </span>
           )}
         </div>
 
         {isRestrictedTab && (
-          <div className="flex items-start gap-1.5 mt-1 text-[10.5px] text-amber-300 bg-amber-950/40 p-1.5 rounded border border-amber-800/40">
-            <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-            <span>
-              Restricted browser page. Switch to a standard website to use AURA.
-            </span>
+          <div className={`flex items-start gap-1.5 mt-1 text-[10.5px] p-1.5 rounded border ${isLight ? 'bg-amber-100 border-amber-300 text-amber-900' : 'text-amber-300 bg-amber-950/40 border-amber-800/40'}`}>
+            <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+            <span>Restricted browser page. Switch to a standard website to use AURA.</span>
           </div>
         )}
       </section>
 
       {/* VIEW 1: PAGE INTELLIGENCE ANALYZER */}
       {activeTabMode === 'analyze' && (
-        <div className="flex flex-col gap-2.5 animate-fade-in">
+        <div role="tabpanel" id="panel-analyze" aria-labelledby="tab-analyze" className="flex flex-col gap-2.5 animate-fade-in">
           {/* Dual Action Buttons */}
           <div className="grid grid-cols-2 gap-2">
             <button
               id="aura-analyze-btn"
               onClick={handleAnalyzePage}
               disabled={analyzeStatus === 'loading' || isRestrictedTab}
-              className="aura-btn-gradient relative py-2 px-3 rounded-xl text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              className="aura-btn-gradient relative py-2 px-3 rounded-xl text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none"
             >
               {analyzeStatus === 'loading' ? (
                 <>
@@ -614,7 +677,11 @@ export default function Popup() {
               id="aura-open-assistant-btn"
               onClick={handleOpenFloatingAssistant}
               disabled={isRestrictedTab}
-              className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100 font-semibold text-xs py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              className={`font-semibold text-xs py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none border ${
+                isLight
+                  ? 'bg-slate-200 hover:bg-slate-300 border-slate-300 text-slate-800'
+                  : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-100'
+              }`}
               title="Open floating AURA assistant directly on the webpage"
             >
               <PanelRightOpen className="w-3.5 h-3.5 text-indigo-400" />
@@ -623,68 +690,68 @@ export default function Popup() {
           </div>
 
           {highlightFeedback && (
-            <div className="p-2 rounded-lg bg-indigo-950/60 border border-indigo-700/60 text-indigo-200 text-[11px] flex items-center gap-1.5 animate-fade-in">
-              <Focus className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+            <div className={`p-2 rounded-lg text-[11px] flex items-center gap-1.5 animate-fade-in border ${isLight ? 'bg-indigo-100 border-indigo-300 text-indigo-900' : 'bg-indigo-950/60 border-indigo-700/60 text-indigo-200'}`}>
+              <Focus className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
               <span>{highlightFeedback}</span>
             </div>
           )}
 
           {/* Analysis Summary Result */}
           {pageContext ? (
-            <div className="flex flex-col gap-2 bg-slate-900/60 rounded-xl p-3 border border-slate-800/80">
-              <div className="flex items-center justify-between border-b border-slate-800/60 pb-1.5">
+            <div className={`flex flex-col gap-2 rounded-xl p-3 border ${isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900/60 border-slate-800/80'}`}>
+              <div className={`flex items-center justify-between border-b pb-1.5 ${isLight ? 'border-slate-200' : 'border-slate-800/60'}`}>
                 <div className="flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-500" />
+                  <span className={`text-xs font-bold uppercase tracking-wider ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
                     PAGE ANALYSIS
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-400 font-mono">
+                <span className={`text-[10px] font-mono ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                   lang: {pageContext.metadata.lang || 'en'}
                 </span>
               </div>
 
               {/* Title display */}
               <div className="text-[11px]">
-                <span className="text-slate-400 font-medium">Title: </span>
-                <span className="text-slate-100 font-semibold truncate block">
+                <span className={`font-medium ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Title: </span>
+                <span className={`font-semibold truncate block ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
                   {pageContext.metadata.title}
                 </span>
               </div>
 
               {/* 5-Metric Summary Grid */}
               <div className="grid grid-cols-5 gap-1.5 text-center mt-1">
-                <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
-                  <Heading className="w-3.5 h-3.5 text-indigo-400 mb-0.5" />
-                  <span className="text-sm font-bold text-slate-100">{pageContext.summary.headingsCount}</span>
-                  <span className="text-[9px] text-slate-400">Headings</span>
+                <div className={`p-2 rounded-lg border flex flex-col items-center ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-950/80 border-slate-800/80'}`}>
+                  <Heading className="w-3.5 h-3.5 text-indigo-500 mb-0.5" />
+                  <span className={`text-sm font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{pageContext.summary.headingsCount}</span>
+                  <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Headings</span>
                 </div>
-                <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
-                  <MousePointerClick className="w-3.5 h-3.5 text-cyan-400 mb-0.5" />
-                  <span className="text-sm font-bold text-slate-100">{pageContext.summary.buttonsCount}</span>
-                  <span className="text-[9px] text-slate-400">Buttons</span>
+                <div className={`p-2 rounded-lg border flex flex-col items-center ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-950/80 border-slate-800/80'}`}>
+                  <MousePointerClick className="w-3.5 h-3.5 text-cyan-500 mb-0.5" />
+                  <span className={`text-sm font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{pageContext.summary.buttonsCount}</span>
+                  <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Buttons</span>
                 </div>
-                <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
-                  <Link2 className="w-3.5 h-3.5 text-emerald-400 mb-0.5" />
-                  <span className="text-sm font-bold text-slate-100">{pageContext.summary.linksCount}</span>
-                  <span className="text-[9px] text-slate-400">Links</span>
+                <div className={`p-2 rounded-lg border flex flex-col items-center ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-950/80 border-slate-800/80'}`}>
+                  <Link2 className="w-3.5 h-3.5 text-emerald-500 mb-0.5" />
+                  <span className={`text-sm font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{pageContext.summary.linksCount}</span>
+                  <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Links</span>
                 </div>
-                <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
-                  <FormInput className="w-3.5 h-3.5 text-amber-400 mb-0.5" />
-                  <span className="text-sm font-bold text-slate-100">{pageContext.summary.inputsCount}</span>
-                  <span className="text-[9px] text-slate-400">Inputs</span>
+                <div className={`p-2 rounded-lg border flex flex-col items-center ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-950/80 border-slate-800/80'}`}>
+                  <FormInput className="w-3.5 h-3.5 text-amber-500 mb-0.5" />
+                  <span className={`text-sm font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{pageContext.summary.inputsCount}</span>
+                  <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Inputs</span>
                 </div>
-                <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-purple-400 mb-0.5" />
-                  <span className="text-sm font-bold text-slate-100">{pageContext.summary.formsCount}</span>
-                  <span className="text-[9px] text-slate-400">Forms</span>
+                <div className={`p-2 rounded-lg border flex flex-col items-center ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-950/80 border-slate-800/80'}`}>
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-purple-500 mb-0.5" />
+                  <span className={`text-sm font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{pageContext.summary.formsCount}</span>
+                  <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Forms</span>
                 </div>
               </div>
 
               {/* Sample Quick Highlight Elements */}
               {pageContext.buttons.length > 0 && (
                 <div className="mt-1 flex flex-col gap-1">
-                  <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
+                  <span className={`text-[10px] font-semibold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                     Quick Highlight
                   </span>
                   <div className="flex flex-wrap gap-1">
@@ -692,10 +759,15 @@ export default function Popup() {
                       <button
                         key={btn.id}
                         onClick={() => handleHighlight(btn.id)}
-                        className="text-[10.5px] px-2 py-1 rounded bg-slate-800 hover:bg-indigo-900/60 border border-slate-700 hover:border-indigo-500 text-slate-200 flex items-center gap-1 transition-colors truncate max-w-[170px] cursor-pointer"
+                        className={`text-[10.5px] px-2 py-1 rounded border flex items-center gap-1 transition-colors truncate max-w-[170px] cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none ${
+                          isLight
+                            ? 'bg-slate-100 hover:bg-indigo-50 border-slate-200 hover:border-indigo-400 text-slate-800'
+                            : 'bg-slate-800 hover:bg-indigo-900/60 border-slate-700 hover:border-indigo-500 text-slate-200'
+                        }`}
                         title={`Highlight ${btn.id}: ${btn.text}`}
+                        aria-label={`Highlight element ${btn.text}`}
                       >
-                        <Focus className="w-3 h-3 text-cyan-400 shrink-0" />
+                        <Focus className="w-3 h-3 text-cyan-500 shrink-0" />
                         <span className="truncate">{btn.text}</span>
                       </button>
                     ))}
@@ -704,26 +776,34 @@ export default function Popup() {
               )}
 
               {/* Collapsible View Page Context (Debug Only) */}
-              <div className="mt-1 border-t border-slate-800/60 pt-2">
+              <div className={`mt-1 border-t pt-2 ${isLight ? 'border-slate-200' : 'border-slate-800/60'}`}>
                 <button
                   onClick={() => setIsJsonOpen(!isJsonOpen)}
-                  className="w-full flex items-center justify-between text-[11px] font-medium text-slate-400 hover:text-slate-200 transition-colors py-1 cursor-pointer"
+                  className={`w-full flex items-center justify-between text-[11px] font-medium transition-colors py-1 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none rounded ${
+                    isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  aria-expanded={isJsonOpen}
                 >
                   <span className="flex items-center gap-1.5">
-                    <Layers className="w-3 h-3 text-indigo-400" />
+                    <Layers className="w-3 h-3 text-indigo-500" />
                     <span>View Page Context (Debug)</span>
                   </span>
                   {isJsonOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </button>
 
                 {isJsonOpen && (
-                  <div className="mt-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-[10px] font-mono text-slate-300 max-h-36 overflow-y-auto relative animate-fade-in">
+                  <div className={`mt-2 p-2.5 rounded-lg border text-[10px] font-mono max-h-36 overflow-y-auto relative animate-fade-in ${
+                    isLight ? 'bg-slate-100 border-slate-200 text-slate-800' : 'bg-slate-950 border-slate-800 text-slate-300'
+                  }`}>
                     <button
                       onClick={handleCopyJson}
                       title="Copy JSON"
-                      className="absolute top-2 right-2 p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+                      aria-label="Copy Page Context JSON"
+                      className={`absolute top-2 right-2 p-1 rounded transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-400 ${
+                        isLight ? 'bg-white hover:bg-slate-200 text-slate-700 shadow-sm border border-slate-200' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                      }`}
                     >
-                      {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
                     </button>
                     <pre className="whitespace-pre-wrap break-all leading-tight">
                       {JSON.stringify(pageContext, null, 2)}
@@ -733,15 +813,19 @@ export default function Popup() {
               </div>
             </div>
           ) : (
-            <div className="p-3.5 rounded-xl border border-dashed border-slate-800 text-center flex flex-col items-center gap-1 text-slate-500 text-xs">
-              <Search className="w-4 h-4 text-slate-600" />
+            <div className={`p-3.5 rounded-xl border border-dashed text-center flex flex-col items-center gap-1 text-xs ${
+              isLight ? 'border-slate-300 text-slate-500' : 'border-slate-800 text-slate-500'
+            }`}>
+              <Search className="w-4 h-4 text-slate-400" />
               <p>Click "Analyze Page" or "In-Page Panel" to inspect and ask AI questions about this page.</p>
             </div>
           )}
 
           {analyzeStatus === 'error' && (
-            <div className="p-2.5 rounded-lg text-xs flex items-start gap-2 bg-rose-950/50 border border-rose-800/60 text-rose-200">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+            <div role="alert" className={`p-2.5 rounded-lg text-xs flex items-start gap-2 border ${
+              isLight ? 'bg-rose-100 border-rose-300 text-rose-900' : 'bg-rose-950/50 border-rose-800/60 text-rose-200'
+            }`}>
+              <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
               <span className="text-[11px] leading-snug">{analyzeMessage}</span>
             </div>
           )}
@@ -750,12 +834,12 @@ export default function Popup() {
 
       {/* VIEW 2: DAY 5 PRIVACY SHIELD DASHBOARD */}
       {activeTabMode === 'privacy' && (
-        <div className="flex flex-col gap-2.5 animate-fade-in">
+        <div role="tabpanel" id="panel-privacy" aria-labelledby="tab-privacy" className="flex flex-col gap-2.5 animate-fade-in">
           {/* Action Button: Scan Current Page */}
           <button
             onClick={handleScanPrivacy}
             disabled={privacyStatus === 'loading' || isRestrictedTab}
-            className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 py-2.5 px-3 rounded-xl text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-950/50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-all"
+            className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 py-2.5 px-3 rounded-xl text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-950/50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-all focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:outline-none"
           >
             {privacyStatus === 'loading' ? (
               <>
@@ -772,72 +856,76 @@ export default function Popup() {
 
           {/* Privacy Scan Results Card */}
           {privacySummary ? (
-            <div className="bg-slate-900/70 rounded-xl p-3 border border-slate-800/80 flex flex-col gap-2">
-              <div className="flex items-center justify-between border-b border-slate-800/60 pb-1.5">
+            <div className={`rounded-xl p-3 border flex flex-col gap-2 ${isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900/70 border-slate-800/80'}`}>
+              <div className={`flex items-center justify-between border-b pb-1.5 ${isLight ? 'border-slate-200' : 'border-slate-800/60'}`}>
                 <div className="flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                  <span className={`text-xs font-bold uppercase tracking-wider ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
                     SCAN SUMMARY
                   </span>
                 </div>
                 {lastScannedTime && (
-                  <span className="text-[9px] text-slate-500 font-mono">
+                  <span className={`text-[9px] font-mono ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>
                     {new Date(lastScannedTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
                 )}
               </div>
 
               {/* Status Message */}
-              <p className="text-[11px] text-slate-300 leading-snug">
+              <p className={`text-[11px] leading-snug ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
                 {privacyMessage}
               </p>
 
               {/* 6-Metric Sensitive Data Grid */}
               <div className="grid grid-cols-3 gap-1.5 mt-1">
-                <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
-                  <Mail className="w-3.5 h-3.5 text-indigo-400 mb-0.5" />
-                  <span className="text-sm font-bold text-slate-100">{privacySummary.emailCount}</span>
-                  <span className="text-[9px] text-slate-400">Emails</span>
+                <div className={`p-2 rounded-lg border flex flex-col items-center ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-950/80 border-slate-800/80'}`}>
+                  <Mail className="w-3.5 h-3.5 text-indigo-500 mb-0.5" />
+                  <span className={`text-sm font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{privacySummary.emailCount}</span>
+                  <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Emails</span>
                 </div>
-                <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
-                  <Phone className="w-3.5 h-3.5 text-cyan-400 mb-0.5" />
-                  <span className="text-sm font-bold text-slate-100">{privacySummary.phoneCount}</span>
-                  <span className="text-[9px] text-slate-400">Phones</span>
+                <div className={`p-2 rounded-lg border flex flex-col items-center ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-950/80 border-slate-800/80'}`}>
+                  <Phone className="w-3.5 h-3.5 text-cyan-500 mb-0.5" />
+                  <span className={`text-sm font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{privacySummary.phoneCount}</span>
+                  <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Phones</span>
                 </div>
-                <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
-                  <CreditCard className="w-3.5 h-3.5 text-amber-400 mb-0.5" />
-                  <span className="text-sm font-bold text-slate-100">{privacySummary.creditCardCount}</span>
-                  <span className="text-[9px] text-slate-400">Cards (Luhn)</span>
+                <div className={`p-2 rounded-lg border flex flex-col items-center ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-950/80 border-slate-800/80'}`}>
+                  <CreditCard className="w-3.5 h-3.5 text-amber-500 mb-0.5" />
+                  <span className={`text-sm font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{privacySummary.creditCardCount}</span>
+                  <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Cards (Luhn)</span>
                 </div>
-                <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
-                  <Fingerprint className="w-3.5 h-3.5 text-emerald-400 mb-0.5" />
-                  <span className="text-sm font-bold text-slate-100">{privacySummary.aadhaarCount}</span>
-                  <span className="text-[9px] text-slate-400">Aadhaar-like</span>
+                <div className={`p-2 rounded-lg border flex flex-col items-center ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-950/80 border-slate-800/80'}`}>
+                  <Fingerprint className="w-3.5 h-3.5 text-emerald-500 mb-0.5" />
+                  <span className={`text-sm font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{privacySummary.aadhaarCount}</span>
+                  <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Aadhaar-like</span>
                 </div>
-                <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
-                  <KeyRound className="w-3.5 h-3.5 text-rose-400 mb-0.5" />
-                  <span className="text-sm font-bold text-slate-100">{privacySummary.apiKeyCount}</span>
-                  <span className="text-[9px] text-slate-400">API Keys</span>
+                <div className={`p-2 rounded-lg border flex flex-col items-center ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-950/80 border-slate-800/80'}`}>
+                  <KeyRound className="w-3.5 h-3.5 text-rose-500 mb-0.5" />
+                  <span className={`text-sm font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{privacySummary.apiKeyCount}</span>
+                  <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>API Keys</span>
                 </div>
-                <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
-                  <Binary className="w-3.5 h-3.5 text-purple-400 mb-0.5" />
-                  <span className="text-sm font-bold text-slate-100">{privacySummary.tokenCount}</span>
-                  <span className="text-[9px] text-slate-400">Tokens</span>
+                <div className={`p-2 rounded-lg border flex flex-col items-center ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-950/80 border-slate-800/80'}`}>
+                  <Binary className="w-3.5 h-3.5 text-purple-500 mb-0.5" />
+                  <span className={`text-sm font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{privacySummary.tokenCount}</span>
+                  <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Tokens</span>
                 </div>
               </div>
 
-              {/* Findings List (Metadata Only) */}
+              {/* Findings List with User-Friendly Location Badges */}
               {privacyFindings.length > 0 && (
                 <div className="mt-1 flex flex-col gap-1">
-                  <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
+                  <span className={`text-[10px] font-semibold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                     Redacted Locations ({privacyFindings.length})
                   </span>
                   <div className="flex flex-col gap-1 max-h-24 overflow-y-auto pr-1">
                     {privacyFindings.map((f, idx) => (
-                      <div key={idx} className="p-1.5 rounded bg-slate-950/90 border border-slate-800 text-[10px] flex items-center justify-between">
-                        <span className="font-mono text-cyan-300 uppercase">[{f.type.replace('_', ' ')}]</span>
-                        <span className="text-slate-400 truncate max-w-[200px]" title={f.location}>{f.location}</span>
-                        <span className="text-emerald-400 text-[9px] font-semibold">Redacted</span>
+                      <div key={idx} className={`p-1.5 rounded border text-[10px] flex items-center justify-between ${
+                        isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-950/90 border-slate-800'
+                      }`}>
+                        <span className="font-mono text-cyan-500 uppercase font-semibold">[{f.type.replace('_', ' ')}]</span>
+                        <span className={`truncate max-w-[190px] font-medium ${isLight ? 'text-slate-800' : 'text-slate-300'}`} title={f.location}>
+                          {f.friendlyLocation || f.location}
+                        </span>
+                        <span className="text-emerald-500 text-[9px] font-semibold">Redacted</span>
                       </div>
                     ))}
                   </div>
@@ -845,33 +933,35 @@ export default function Popup() {
               )}
             </div>
           ) : (
-            <div className="p-3.5 rounded-xl border border-dashed border-slate-800 text-center flex flex-col items-center gap-1 text-slate-500 text-xs">
+            <div className={`p-3.5 rounded-xl border border-dashed text-center flex flex-col items-center gap-1 text-xs ${
+              isLight ? 'border-slate-300 text-slate-500' : 'border-slate-800 text-slate-500'
+            }`}>
               <ShieldCheck className="w-4 h-4 text-emerald-500" />
               <p>Click "Scan Current Page" to run local sensitive data detection without transmitting anything to AI.</p>
             </div>
           )}
 
           {/* Immutable Guarantees Checklist */}
-          <div className="bg-slate-900/40 rounded-xl p-3 border border-slate-800/60 flex flex-col gap-1.5 text-[11px] text-slate-400">
-            <div className="flex items-center gap-1.5 text-slate-200 font-semibold text-xs">
-              <Lock className="w-3.5 h-3.5 text-emerald-400" />
+          <div className={`rounded-xl p-3 border flex flex-col gap-1.5 text-[11px] ${isLight ? 'bg-slate-100/70 border-slate-200 text-slate-600' : 'bg-slate-900/40 border-slate-800/60 text-slate-400'}`}>
+            <div className={`flex items-center gap-1.5 font-semibold text-xs ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+              <Lock className="w-3.5 h-3.5 text-emerald-500" />
               <span>Privacy Shield Guarantees</span>
             </div>
-            <ul className="flex flex-col gap-1 text-[10.5px] text-slate-300">
+            <ul className="flex flex-col gap-1 text-[10.5px]">
               <li className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
-                <span>Form values (<code className="text-cyan-300">input.value</code>) are never collected</span>
+                <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                <span>Form values (<code className="text-cyan-500 font-mono">input.value</code>) are never collected</span>
               </li>
               <li className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
                 <span>Raw HTML & DOM nodes are never sent</span>
               </li>
               <li className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
                 <span>Sensitive text is detected & redacted locally</span>
               </li>
               <li className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
                 <span>Luhn checksum validates cards before redacting</span>
               </li>
             </ul>
@@ -881,25 +971,25 @@ export default function Popup() {
 
       {/* VIEW 3: DAY 4 AI SETTINGS */}
       {activeTabMode === 'settings' && (
-        <div className="flex flex-col gap-3 animate-fade-in">
-          <div className="bg-slate-900/70 rounded-xl p-3 border border-slate-800/80 flex flex-col gap-2.5">
+        <div role="tabpanel" id="panel-settings" aria-labelledby="tab-settings" className="flex flex-col gap-3 animate-fade-in">
+          <div className={`rounded-xl p-3 border flex flex-col gap-2.5 ${isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900/70 border-slate-800/80'}`}>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200">
-                <KeyRound className="w-3.5 h-3.5 text-cyan-400" />
+              <div className={`flex items-center gap-1.5 text-xs font-semibold ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+                <KeyRound className="w-3.5 h-3.5 text-cyan-500" />
                 <span>Google Gemini API Key</span>
               </div>
               <span
                 className={`text-[9.5px] font-semibold px-2 py-0.5 rounded-full border ${
                   hasStoredKey
-                    ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/40'
-                    : 'bg-amber-950/60 text-amber-300 border-amber-800/40'
+                    ? isLight ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/40'
+                    : isLight ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-amber-950/60 text-amber-300 border-amber-800/40'
                 }`}
               >
                 {hasStoredKey ? 'Connected' : 'Missing Key'}
               </span>
             </div>
 
-            <p className="text-[11px] text-slate-400 leading-snug">
+            <p className={`text-[11px] leading-snug ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
               Enter your Google Gemini API key to enable live AI page understanding and element guidance.
             </p>
 
@@ -910,13 +1000,19 @@ export default function Popup() {
                 value={apiKeyInput}
                 onChange={(e) => setApiKeyInput(e.target.value)}
                 placeholder="AIzaSy..."
-                className="w-full bg-slate-950 border border-slate-700/80 rounded-lg py-2 pl-3 pr-10 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono"
+                aria-label="Google Gemini API Key"
+                className={`w-full border rounded-lg py-2 pl-3 pr-10 text-xs font-mono focus:outline-none focus:border-indigo-500 ${
+                  isLight
+                    ? 'bg-slate-100 border-slate-300 text-slate-900 placeholder-slate-400'
+                    : 'bg-slate-950 border-slate-700/80 text-slate-200 placeholder-slate-600'
+                }`}
               />
               <button
                 type="button"
                 onClick={() => setShowKey(!showKey)}
-                className="absolute right-2.5 text-slate-400 hover:text-slate-200 p-1 cursor-pointer"
+                className="absolute right-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none rounded"
                 title={showKey ? 'Hide key' : 'Show key'}
+                aria-label={showKey ? 'Hide API key' : 'Show API key'}
               >
                 {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
               </button>
@@ -925,13 +1021,14 @@ export default function Popup() {
             {/* Model Selector with Auto-Detect */}
             <div className="flex flex-col gap-1 mt-1">
               <div className="flex items-center justify-between">
-                <label className="text-[10px] text-slate-400 font-medium">Gemini Model</label>
+                <label className={`text-[10px] font-medium ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>Gemini Model</label>
                 <button
                   type="button"
                   onClick={handleDetectModels}
                   disabled={isDetectingModels}
-                  className="text-[9.5px] text-cyan-400 hover:text-cyan-300 font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                  className="text-[9.5px] text-cyan-500 hover:text-cyan-600 dark:hover:text-cyan-300 font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none rounded"
                   title="Detect supported models for your API key"
+                  aria-label="Auto-detect supported Gemini models"
                 >
                   <RefreshCw className={`w-2.5 h-2.5 ${isDetectingModels ? 'animate-spin' : ''}`} />
                   <span>{isDetectingModels ? 'Detecting...' : 'Auto-Detect'}</span>
@@ -941,7 +1038,12 @@ export default function Popup() {
               <select
                 value={modelSelect}
                 onChange={(e) => setModelSelect(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700/80 rounded-lg py-1.5 px-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono cursor-pointer"
+                aria-label="Select Gemini Model"
+                className={`w-full border rounded-lg py-1.5 px-2.5 text-xs font-mono cursor-pointer focus:outline-none focus:border-indigo-500 ${
+                  isLight
+                    ? 'bg-slate-100 border-slate-300 text-slate-900'
+                    : 'bg-slate-950 border-slate-700/80 text-slate-200'
+                }`}
               >
                 {detectedModels.length > 0 ? (
                   detectedModels.map((m) => (
@@ -963,7 +1065,7 @@ export default function Popup() {
             <div className="flex items-center gap-2 mt-1">
               <button
                 onClick={handleSaveApiKey}
-                className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none"
               >
                 <Save className="w-3.5 h-3.5" />
                 <span>Save Settings</span>
@@ -972,8 +1074,13 @@ export default function Popup() {
               {hasStoredKey && (
                 <button
                   onClick={handleClearApiKey}
-                  className="bg-slate-800 hover:bg-rose-950/60 hover:text-rose-300 hover:border-rose-800/60 border border-slate-700 text-slate-400 text-xs py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  className={`border text-xs py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:outline-none ${
+                    isLight
+                      ? 'bg-slate-200 hover:bg-rose-100 hover:text-rose-800 hover:border-rose-300 border-slate-300 text-slate-700'
+                      : 'bg-slate-800 hover:bg-rose-950/60 hover:text-rose-300 hover:border-rose-800/60 border-slate-700 text-slate-400'
+                  }`}
                   title="Remove stored key"
+                  aria-label="Clear API key from storage"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>Clear</span>
@@ -983,16 +1090,17 @@ export default function Popup() {
 
             {settingsFeedback && (
               <div
+                role="status"
                 className={`p-2 rounded-lg text-xs flex items-center gap-1.5 border animate-fade-in ${
                   settingsFeedback.type === 'success'
-                    ? 'bg-emerald-950/60 border-emerald-800/60 text-emerald-200'
-                    : 'bg-rose-950/60 border-rose-800/60 text-rose-200'
+                    ? isLight ? 'bg-emerald-100 border-emerald-300 text-emerald-900' : 'bg-emerald-950/60 border-emerald-800/60 text-emerald-200'
+                    : isLight ? 'bg-rose-100 border-rose-300 text-rose-900' : 'bg-rose-950/60 border-rose-800/60 text-rose-200'
                 }`}
               >
                 {settingsFeedback.type === 'success' ? (
-                  <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                 ) : (
-                  <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                  <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
                 )}
                 <span className="text-[10.5px]">{settingsFeedback.text}</span>
               </div>
@@ -1000,13 +1108,13 @@ export default function Popup() {
           </div>
 
           {/* Privacy Note Card */}
-          <div className="bg-slate-900/40 rounded-xl p-3 border border-slate-800/60 flex flex-col gap-1.5 text-[11px] text-slate-400">
-            <div className="flex items-center gap-1.5 text-slate-300 font-semibold text-xs">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+          <div className={`rounded-xl p-3 border flex flex-col gap-1.5 text-[11px] ${isLight ? 'bg-slate-100/70 border-slate-200 text-slate-600' : 'bg-slate-900/40 border-slate-800/60 text-slate-400'}`}>
+            <div className={`flex items-center gap-1.5 font-semibold text-xs ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
               <span>Local Storage Security</span>
             </div>
             <p className="leading-relaxed text-[10.5px]">
-              Your API key is stored strictly within your browser's <code className="text-cyan-300 bg-slate-950 px-1 py-0.5 rounded">chrome.storage.local</code>. It is never logged, never exposed to webpage scripts, and used solely for direct communication with Gemini API.
+              Your API key is stored strictly within your browser's <code className="text-cyan-500 bg-slate-200 dark:bg-slate-950 px-1 py-0.5 rounded font-mono">chrome.storage.local</code>. It is never logged, never exposed to webpage scripts, and used solely for direct communication with the Gemini API.
             </p>
           </div>
         </div>
@@ -1014,12 +1122,12 @@ export default function Popup() {
 
       {/* VIEW 4: DAY 1 CONNECTION TEST */}
       {activeTabMode === 'test' && (
-        <div className="flex flex-col gap-3 animate-fade-in">
+        <div role="tabpanel" id="panel-test" aria-labelledby="tab-test" className="flex flex-col gap-3 animate-fade-in">
           <button
             id="aura-test-connection-btn"
             onClick={handleTestConnection}
             disabled={connStatus === 'loading'}
-            className="aura-btn-gradient relative w-full py-2.5 px-4 rounded-xl text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+            className="aura-btn-gradient relative w-full py-2.5 px-4 rounded-xl text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none"
           >
             {connStatus === 'loading' ? (
               <>
@@ -1034,14 +1142,14 @@ export default function Popup() {
             )}
           </button>
 
-          <section className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-800/70 flex flex-col gap-2">
+          <section className={`rounded-xl p-2.5 border flex flex-col gap-2 ${isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900/60 border-slate-800/70'}`}>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
-                <Layers className="w-3.5 h-3.5 text-indigo-400" />
+              <div className={`flex items-center gap-1.5 text-xs font-semibold ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>
+                <Layers className="w-3.5 h-3.5 text-indigo-500" />
                 <span>Communication Pipeline</span>
               </div>
               {connLatency !== null && (
-                <span className="text-[9.5px] font-mono text-cyan-400 bg-cyan-950/50 px-1.5 py-0.5 rounded border border-cyan-800/40">
+                <span className={`text-[9.5px] font-mono px-1.5 py-0.5 rounded border ${isLight ? 'bg-cyan-100 border-cyan-300 text-cyan-900' : 'text-cyan-400 bg-cyan-950/50 border-cyan-800/40'}`}>
                   {connLatency}ms
                 </span>
               )}
@@ -1053,19 +1161,19 @@ export default function Popup() {
                   key={idx}
                   className={`p-2 rounded-lg border transition-all duration-200 ${
                     step.status === 'success'
-                      ? 'bg-emerald-950/30 border-emerald-800/50 text-emerald-300'
+                      ? isLight ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-emerald-950/30 border-emerald-800/50 text-emerald-300'
                       : step.status === 'active'
-                      ? 'bg-indigo-950/40 border-indigo-700/60 text-indigo-300 animate-pulse'
+                      ? isLight ? 'bg-indigo-50 border-indigo-200 text-indigo-800 animate-pulse' : 'bg-indigo-950/40 border-indigo-700/60 text-indigo-300 animate-pulse'
                       : step.status === 'error'
-                      ? 'bg-rose-950/30 border-rose-800/50 text-rose-300'
-                      : 'bg-slate-950/40 border-slate-800/50 text-slate-400'
+                      ? isLight ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-rose-950/30 border-rose-800/50 text-rose-300'
+                      : isLight ? 'bg-slate-100 border-slate-200 text-slate-600' : 'bg-slate-950/40 border-slate-800/50 text-slate-400'
                   }`}
                 >
                   <div className="flex items-center justify-between font-medium">
                     <span className="truncate">{step.label}</span>
-                    {step.status === 'success' && <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />}
-                    {step.status === 'active' && <Radio className="w-3 h-3 text-indigo-400 animate-spin shrink-0" />}
-                    {step.status === 'error' && <AlertCircle className="w-3 h-3 text-rose-400 shrink-0" />}
+                    {step.status === 'success' && <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />}
+                    {step.status === 'active' && <Radio className="w-3 h-3 text-indigo-500 animate-spin shrink-0" />}
+                    {step.status === 'error' && <AlertCircle className="w-3 h-3 text-rose-500 shrink-0" />}
                   </div>
                   <p className="text-[9px] opacity-75 mt-0.5 truncate">{step.detail}</p>
                 </div>
@@ -1074,17 +1182,18 @@ export default function Popup() {
 
             {connStatus !== 'idle' && (
               <div
+                role="status"
                 className={`p-2 rounded-lg text-xs flex items-start gap-2 border ${
                   connStatus === 'success'
-                    ? 'bg-emerald-950/50 border-emerald-800/60 text-emerald-200'
+                    ? isLight ? 'bg-emerald-100 border-emerald-300 text-emerald-900' : 'bg-emerald-950/50 border-emerald-800/60 text-emerald-200'
                     : connStatus === 'error'
-                    ? 'bg-rose-950/50 border-rose-800/60 text-rose-200'
-                    : 'bg-indigo-950/50 border-indigo-800/60 text-indigo-200'
+                    ? isLight ? 'bg-rose-100 border-rose-300 text-rose-900' : 'bg-rose-950/50 border-rose-800/60 text-rose-200'
+                    : isLight ? 'bg-indigo-100 border-indigo-300 text-indigo-900' : 'bg-indigo-950/50 border-indigo-800/60 text-indigo-200'
                 }`}
               >
-                {connStatus === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />}
-                {connStatus === 'error' && <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />}
-                {connStatus === 'loading' && <RefreshCw className="w-3.5 h-3.5 text-indigo-400 animate-spin shrink-0 mt-0.5" />}
+                {connStatus === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />}
+                {connStatus === 'error' && <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />}
+                {connStatus === 'loading' && <RefreshCw className="w-3.5 h-3.5 text-indigo-500 animate-spin shrink-0 mt-0.5" />}
                 <span className="leading-snug text-[10.5px]">{connMessage}</span>
               </div>
             )}
@@ -1093,9 +1202,9 @@ export default function Popup() {
       )}
 
       {/* Footer Info */}
-      <footer className="flex items-center justify-between text-[9.5px] text-slate-500 pt-1 border-t border-slate-900">
+      <footer className={`flex items-center justify-between text-[9.5px] pt-1 border-t mt-auto ${isLight ? 'border-slate-200 text-slate-500' : 'border-slate-900 text-slate-500'}`}>
         <span>Manifest V3 &bull; Privacy Shield &bull; Gemini AI</span>
-        <span className="font-mono text-slate-400">Day 5 Complete</span>
+        <span className="font-mono">Day 6 Release Ready</span>
       </footer>
     </div>
   );

@@ -23,6 +23,7 @@ export interface PrivacyFinding {
   type: SensitiveDataType;
   severity: 'low' | 'medium' | 'high';
   location: string;
+  friendlyLocation?: string;
   redacted: boolean;
 }
 
