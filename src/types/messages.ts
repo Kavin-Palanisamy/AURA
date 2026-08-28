@@ -1,9 +1,10 @@
 /**
  * AURA Message Protocol Definitions
- * Manifest V3 Type-Safe Communication Layer
+ * Manifest V3 Type-Safe Communication Layer (Day 1 - Day 4)
  */
 
 import type { PageContext } from './page';
+import type { AuraAIResponse, SanitizedPageContext } from '../ai/types';
 
 export const AURA_ACTIONS = {
   TEST_CONNECTION: 'AURA_TEST_CONNECTION',
@@ -11,6 +12,7 @@ export const AURA_ACTIONS = {
   ANALYZE_PAGE: 'AURA_ANALYZE_PAGE',
   HIGHLIGHT_ELEMENT: 'AURA_HIGHLIGHT_ELEMENT',
   TOGGLE_ASSISTANT: 'AURA_TOGGLE_ASSISTANT',
+  ASK_AI: 'AURA_ASK_AI',
   PING: 'AURA_PING',
 } as const;
 
@@ -28,7 +30,7 @@ export interface ShowBannerPayload {
 }
 
 export interface AnalyzePagePayload {
-  source: 'popup';
+  source: 'popup' | 'content';
   requestedAt: number;
 }
 
@@ -39,6 +41,11 @@ export interface HighlightElementPayload {
 
 export interface ToggleAssistantPayload {
   open?: boolean;
+}
+
+export interface AskAIPayload {
+  question: string;
+  context: SanitizedPageContext;
 }
 
 export interface PingPayload {
@@ -70,6 +77,11 @@ export interface ToggleAssistantMessage {
   payload?: ToggleAssistantPayload;
 }
 
+export interface AskAIMessage {
+  action: typeof AURA_ACTIONS.ASK_AI;
+  payload: AskAIPayload;
+}
+
 export interface PingMessage {
   action: typeof AURA_ACTIONS.PING;
   payload?: PingPayload;
@@ -81,6 +93,7 @@ export type AuraMessage =
   | AnalyzePageMessage
   | HighlightElementMessage
   | ToggleAssistantMessage
+  | AskAIMessage
   | PingMessage;
 
 export interface AuraResponse<T = unknown> {
@@ -110,6 +123,8 @@ export interface HighlightElementResponseData {
   elementTag: string;
   highlightedAt: number;
 }
+
+export type AskAIResponseData = AuraAIResponse;
 
 /**
  * Type guard to check if an object is a valid AuraMessage

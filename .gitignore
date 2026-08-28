@@ -7,6 +7,12 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Environment & API keys
+.env
+.env.local
+.env.*
+!.env.example
+
 # IDE & Gemini
 .idea/
 .vscode/

@@ -20,7 +20,12 @@ import {
   Check,
   ShieldCheck,
   PanelRightOpen,
-  Focus
+  Focus,
+  KeyRound,
+  Eye,
+  EyeOff,
+  Trash2,
+  Save
 } from 'lucide-react';
 import {
   AURA_ACTIONS,
@@ -34,7 +39,7 @@ import {
 } from '../types/messages';
 import type { PageContext } from '../types/page';
 
-type ActiveTabMode = 'analyze' | 'test';
+type ActiveTabMode = 'analyze' | 'test' | 'settings';
 type StatusState = 'idle' | 'loading' | 'success' | 'error';
 
 interface DiagnosticStep {
@@ -65,6 +70,13 @@ export default function Popup() {
   const [copied, setCopied] = useState<boolean>(false);
   const [highlightFeedback, setHighlightFeedback] = useState<string | null>(null);
 
+  // Day 4 Settings & API Key State
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+  const [modelSelect, setModelSelect] = useState<string>('gemini-1.5-flash');
+  const [hasStoredKey, setHasStoredKey] = useState<boolean>(false);
+  const [showKey, setShowKey] = useState<boolean>(false);
+  const [settingsFeedback, setSettingsFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   // Active Tab Info
   const [activeTabTitle, setActiveTabTitle] = useState<string>('Detecting active tab...');
   const [activeTabUrl, setActiveTabUrl] = useState<string>('');
@@ -72,7 +84,65 @@ export default function Popup() {
 
   useEffect(() => {
     fetchActiveTabInfo();
+    loadStoredApiKey();
   }, []);
+
+  const loadStoredApiKey = async () => {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        const data = await chrome.storage.local.get(['aura_gemini_api_key', 'aura_gemini_model']);
+        if (data?.aura_gemini_api_key) {
+          setHasStoredKey(true);
+          setApiKeyInput(data.aura_gemini_api_key);
+        } else {
+          setHasStoredKey(false);
+        }
+        if (data?.aura_gemini_model) {
+          setModelSelect(data.aura_gemini_model);
+        }
+      }
+    } catch (err) {
+      console.warn('Could not read chrome.storage:', err);
+    }
+  };
+
+  const handleSaveApiKey = async () => {
+    if (!apiKeyInput.trim()) {
+      setSettingsFeedback({ type: 'error', text: 'Please enter a valid Gemini API key.' });
+      return;
+    }
+
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        await chrome.storage.local.set({
+          aura_gemini_api_key: apiKeyInput.trim(),
+          aura_gemini_model: modelSelect
+        });
+        setHasStoredKey(true);
+        setSettingsFeedback({ type: 'success', text: 'Gemini settings saved securely in extension storage!' });
+        setTimeout(() => setSettingsFeedback(null), 3000);
+      } else {
+        setSettingsFeedback({ type: 'error', text: 'Chrome extension storage is unavailable in preview.' });
+      }
+    } catch (err) {
+      setSettingsFeedback({ type: 'error', text: 'Failed to save settings.' });
+    }
+  };
+
+  const handleClearApiKey = async () => {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        await chrome.storage.local.remove(['aura_gemini_api_key', 'aura_gemini_model']);
+        setApiKeyInput('');
+        setModelSelect('gemini-1.5-flash');
+        setHasStoredKey(false);
+        setSettingsFeedback({ type: 'success', text: 'API key cleared from storage.' });
+        setTimeout(() => setSettingsFeedback(null), 3000);
+      }
+    } catch (err) {
+      setSettingsFeedback({ type: 'error', text: 'Failed to clear API key.' });
+    }
+  };
 
   const fetchActiveTabInfo = async () => {
     try {
@@ -115,7 +185,7 @@ export default function Popup() {
       { label: 'React Popup', detail: 'Sending runtime message...', status: 'active' },
       { label: 'Service Worker', detail: 'Awaiting routing...', status: 'pending' },
       { label: 'Content Script', detail: 'Awaiting injection...', status: 'pending' },
-      { label: 'Webpage Banner', detail: 'Awaiting render...', status: 'pending' }
+      { label: 'Webpage Banner', detail: '3s auto-dismiss overlay', status: 'pending' }
     ]);
 
     try {
@@ -288,18 +358,18 @@ export default function Popup() {
   };
 
   return (
-    <div className="w-[390px] bg-slate-950 text-slate-100 p-4 flex flex-col gap-3.5 font-sans border border-slate-800/80 shadow-2xl relative overflow-hidden">
+    <div className="w-[390px] bg-slate-950 text-slate-100 p-4 flex flex-col gap-3 font-sans border border-slate-800/80 shadow-2xl relative overflow-hidden">
       {/* Background Ambient Glow */}
       <div className="absolute -top-16 -right-16 w-48 h-48 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-cyan-600/15 rounded-full blur-3xl pointer-events-none" />
 
       {/* Header & Logo Section */}
-      <header className="flex items-center justify-between border-b border-slate-800/60 pb-3 relative z-10">
+      <header className="flex items-center justify-between border-b border-slate-800/60 pb-2.5 relative z-10">
         <div className="flex items-center gap-2.5">
           {/* Logo Mark */}
-          <div className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-cyan-400 p-[1.5px] shadow-lg shadow-indigo-500/20">
+          <div className="relative flex items-center justify-center w-8.5 h-8.5 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-cyan-400 p-[1.5px] shadow-lg shadow-indigo-500/20">
             <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
-              <Sparkles className="w-4.5 h-4.5 text-cyan-300 animate-pulse-glow" />
+              <Sparkles className="w-4 h-4 text-cyan-300 animate-pulse-glow" />
             </div>
           </div>
 
@@ -310,45 +380,56 @@ export default function Popup() {
                 AURA
               </h1>
               <span className="text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded-full bg-indigo-950/90 text-indigo-300 border border-indigo-700/50">
-                Day 3
+                Day 4 AI
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium">
+            <p className="text-[10.5px] text-slate-400 font-medium">
               Understand. Navigate. Protect.
             </p>
           </div>
         </div>
 
-        {/* Live Privacy Badge */}
-        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-[10px] text-emerald-400">
+        {/* Live Status Badge */}
+        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-[9.5px] text-emerald-400">
           <ShieldCheck className="w-3 h-3 text-emerald-400" />
-          <span className="font-medium">Live In-Page</span>
+          <span className="font-medium">{hasStoredKey ? 'AI Ready' : 'Privacy-First'}</span>
         </div>
       </header>
 
-      {/* Tab Switcher */}
-      <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-900/90 rounded-lg border border-slate-800 text-xs font-semibold">
+      {/* 3-Tab Switcher */}
+      <div className="grid grid-cols-3 gap-1 p-1 bg-slate-900/90 rounded-lg border border-slate-800 text-xs font-semibold">
         <button
           onClick={() => setActiveTabMode('analyze')}
-          className={`py-1.5 px-3 rounded-md transition-all flex items-center justify-center gap-1.5 ${
+          className={`py-1.5 px-2 rounded-md transition-all flex items-center justify-center gap-1 ${
             activeTabMode === 'analyze'
               ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
         >
-          <Search className="w-3.5 h-3.5" />
-          <span>Page Intelligence</span>
+          <Search className="w-3 h-3" />
+          <span className="text-[11px]">Analysis</span>
         </button>
         <button
           onClick={() => setActiveTabMode('test')}
-          className={`py-1.5 px-3 rounded-md transition-all flex items-center justify-center gap-1.5 ${
+          className={`py-1.5 px-2 rounded-md transition-all flex items-center justify-center gap-1 ${
             activeTabMode === 'test'
               ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
         >
-          <Zap className="w-3.5 h-3.5" />
-          <span>Test Connection</span>
+          <Zap className="w-3 h-3" />
+          <span className="text-[11px]">Test</span>
+        </button>
+        <button
+          onClick={() => setActiveTabMode('settings')}
+          className={`py-1.5 px-2 rounded-md transition-all flex items-center justify-center gap-1 ${
+            activeTabMode === 'settings'
+              ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+          }`}
+        >
+          <KeyRound className="w-3 h-3" />
+          <span className="text-[11px]">AI Settings</span>
         </button>
       </div>
 
@@ -383,7 +464,7 @@ export default function Popup() {
           <div className="flex items-start gap-1.5 mt-1 text-[10.5px] text-amber-300 bg-amber-950/40 p-1.5 rounded border border-amber-800/40">
             <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
             <span>
-              Restricted browser page. Switch to a standard website (e.g. google.com) to use AURA.
+              Restricted browser page. Switch to a standard website to use AURA.
             </span>
           </div>
         )}
@@ -457,48 +538,29 @@ export default function Popup() {
 
               {/* 5-Metric Summary Grid */}
               <div className="grid grid-cols-5 gap-1.5 text-center mt-1">
-                {/* Headings */}
                 <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
                   <Heading className="w-3.5 h-3.5 text-indigo-400 mb-0.5" />
-                  <span className="text-sm font-bold text-slate-100">
-                    {pageContext.summary.headingsCount}
-                  </span>
+                  <span className="text-sm font-bold text-slate-100">{pageContext.summary.headingsCount}</span>
                   <span className="text-[9px] text-slate-400">Headings</span>
                 </div>
-
-                {/* Buttons */}
                 <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
                   <MousePointerClick className="w-3.5 h-3.5 text-cyan-400 mb-0.5" />
-                  <span className="text-sm font-bold text-slate-100">
-                    {pageContext.summary.buttonsCount}
-                  </span>
+                  <span className="text-sm font-bold text-slate-100">{pageContext.summary.buttonsCount}</span>
                   <span className="text-[9px] text-slate-400">Buttons</span>
                 </div>
-
-                {/* Links */}
                 <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
                   <Link2 className="w-3.5 h-3.5 text-emerald-400 mb-0.5" />
-                  <span className="text-sm font-bold text-slate-100">
-                    {pageContext.summary.linksCount}
-                  </span>
+                  <span className="text-sm font-bold text-slate-100">{pageContext.summary.linksCount}</span>
                   <span className="text-[9px] text-slate-400">Links</span>
                 </div>
-
-                {/* Inputs */}
                 <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
                   <FormInput className="w-3.5 h-3.5 text-amber-400 mb-0.5" />
-                  <span className="text-sm font-bold text-slate-100">
-                    {pageContext.summary.inputsCount}
-                  </span>
+                  <span className="text-sm font-bold text-slate-100">{pageContext.summary.inputsCount}</span>
                   <span className="text-[9px] text-slate-400">Inputs</span>
                 </div>
-
-                {/* Forms */}
                 <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 flex flex-col items-center">
                   <FileSpreadsheet className="w-3.5 h-3.5 text-purple-400 mb-0.5" />
-                  <span className="text-sm font-bold text-slate-100">
-                    {pageContext.summary.formsCount}
-                  </span>
+                  <span className="text-sm font-bold text-slate-100">{pageContext.summary.formsCount}</span>
                   <span className="text-[9px] text-slate-400">Forms</span>
                 </div>
               </div>
@@ -557,11 +619,10 @@ export default function Popup() {
           ) : (
             <div className="p-3.5 rounded-xl border border-dashed border-slate-800 text-center flex flex-col items-center gap-1 text-slate-500 text-xs">
               <Search className="w-4 h-4 text-slate-600" />
-              <p>Click "Analyze Page" or "In-Page Panel" to inspect and highlight elements directly on the webpage.</p>
+              <p>Click "Analyze Page" or "In-Page Panel" to inspect and ask AI questions about this page.</p>
             </div>
           )}
 
-          {/* Feedback error alert */}
           {analyzeStatus === 'error' && (
             <div className="p-2.5 rounded-lg text-xs flex items-start gap-2 bg-rose-950/50 border border-rose-800/60 text-rose-200">
               <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
@@ -651,10 +712,120 @@ export default function Popup() {
         </div>
       )}
 
+      {/* VIEW 3: DAY 4 AI SETTINGS */}
+      {activeTabMode === 'settings' && (
+        <div className="flex flex-col gap-3 animate-fade-in">
+          <div className="bg-slate-900/70 rounded-xl p-3 border border-slate-800/80 flex flex-col gap-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200">
+                <KeyRound className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Google Gemini API Key</span>
+              </div>
+              <span
+                className={`text-[9.5px] font-semibold px-2 py-0.5 rounded-full border ${
+                  hasStoredKey
+                    ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/40'
+                    : 'bg-amber-950/60 text-amber-300 border-amber-800/40'
+                }`}
+              >
+                {hasStoredKey ? 'Connected' : 'Missing Key'}
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-400 leading-snug">
+              Enter your Google Gemini API key to enable live AI page understanding and element guidance.
+            </p>
+
+            {/* Input Box */}
+            <div className="relative flex items-center">
+              <input
+                type={showKey ? 'text' : 'password'}
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                placeholder="AIzaSy..."
+                className="w-full bg-slate-950 border border-slate-700/80 rounded-lg py-2 pl-3 pr-10 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setShowKey(!showKey)}
+                className="absolute right-2.5 text-slate-400 hover:text-slate-200 p-1"
+                title={showKey ? 'Hide key' : 'Show key'}
+              >
+                {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+
+            {/* Model Selector */}
+            <div className="flex flex-col gap-1 mt-1">
+              <label className="text-[10px] text-slate-400 font-medium">Gemini Model</label>
+              <select
+                value={modelSelect}
+                onChange={(e) => setModelSelect(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700/80 rounded-lg py-1.5 px-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono cursor-pointer"
+              >
+                <option value="gemini-1.5-flash">gemini-1.5-flash (Fast & Recommended)</option>
+                <option value="gemini-2.0-flash">gemini-2.0-flash (Latest Flash)</option>
+                <option value="gemini-1.5-pro">gemini-1.5-pro (High Reasoning)</option>
+              </select>
+            </div>
+
+            {/* Buttons */}
+            <div className="flex items-center gap-2 mt-1">
+              <button
+                onClick={handleSaveApiKey}
+                className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>Save Settings</span>
+              </button>
+
+              {hasStoredKey && (
+                <button
+                  onClick={handleClearApiKey}
+                  className="bg-slate-800 hover:bg-rose-950/60 hover:text-rose-300 hover:border-rose-800/60 border border-slate-700 text-slate-400 text-xs py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  title="Remove stored key"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Clear</span>
+                </button>
+              )}
+            </div>
+
+            {settingsFeedback && (
+              <div
+                className={`p-2 rounded-lg text-xs flex items-center gap-1.5 border animate-fade-in ${
+                  settingsFeedback.type === 'success'
+                    ? 'bg-emerald-950/60 border-emerald-800/60 text-emerald-200'
+                    : 'bg-rose-950/60 border-rose-800/60 text-rose-200'
+                }`}
+              >
+                {settingsFeedback.type === 'success' ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                )}
+                <span className="text-[10.5px]">{settingsFeedback.text}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Privacy Note Card */}
+          <div className="bg-slate-900/40 rounded-xl p-3 border border-slate-800/60 flex flex-col gap-1.5 text-[11px] text-slate-400">
+            <div className="flex items-center gap-1.5 text-slate-300 font-semibold text-xs">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Local Storage Security</span>
+            </div>
+            <p className="leading-relaxed text-[10.5px]">
+              Your API key is stored strictly within your browser's <code className="text-cyan-300 bg-slate-950 px-1 py-0.5 rounded">chrome.storage.local</code>. It is never logged, never exposed to webpage scripts, and used solely for direct communication with Gemini API.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Footer Info */}
       <footer className="flex items-center justify-between text-[9.5px] text-slate-500 pt-1 border-t border-slate-900">
-        <span>Manifest V3 &bull; React &bull; Vite</span>
-        <span className="font-mono text-slate-400">Day 3 Complete</span>
+        <span>Manifest V3 &bull; React &bull; Gemini AI</span>
+        <span className="font-mono text-slate-400">Day 4 Complete</span>
       </footer>
     </div>
   );

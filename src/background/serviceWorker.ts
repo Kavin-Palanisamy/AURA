@@ -7,16 +7,19 @@ import {
   AnalyzePageMessage,
   HighlightElementMessage,
   ToggleAssistantMessage,
+  AskAIMessage,
   TestConnectionResponseData,
   AnalyzePageResponseData,
-  HighlightElementResponseData
+  HighlightElementResponseData,
+  AskAIResponseData
 } from '../types/messages';
 import type { PageContext } from '../types/page';
+import { getAIProvider } from '../ai/provider';
 
-console.log('[AURA Background] Service Worker initialized.');
+console.log('[AURA Background] Service Worker initialized (Day 1 - Day 4).');
 
 /**
- * Handle incoming runtime messages from popup and other extension components
+ * Handle incoming runtime messages from popup, content scripts, and floating UI
  */
 chrome.runtime.onMessage.addListener(
   (
@@ -24,7 +27,7 @@ chrome.runtime.onMessage.addListener(
     sender: chrome.runtime.MessageSender,
     sendResponse: (response: AuraResponse<unknown>) => void
   ) => {
-    console.log('[AURA Background] Received message from:', sender.id || 'popup/internal', message);
+    console.log('[AURA Background] Received message from:', sender.id || 'internal', message);
 
     if (!isAuraMessage(message)) {
       sendResponse({
@@ -35,19 +38,19 @@ chrome.runtime.onMessage.addListener(
       return false;
     }
 
-    // 1. Day 1 Test Connection
+    // 1. Day 1: Test Connection
     if (message.action === AURA_ACTIONS.TEST_CONNECTION) {
       handleTestConnection(sendResponse as (res: AuraResponse<TestConnectionResponseData>) => void);
       return true;
     }
 
-    // 2. Day 2 Page Intelligence Analysis
+    // 2. Day 2: Page Intelligence Analysis
     if (message.action === AURA_ACTIONS.ANALYZE_PAGE) {
       handleAnalyzePage(sendResponse as (res: AuraResponse<AnalyzePageResponseData>) => void);
       return true;
     }
 
-    // 3. Day 3 Highlight Element
+    // 3. Day 3: Highlight Element
     if (message.action === AURA_ACTIONS.HIGHLIGHT_ELEMENT) {
       handleHighlightElement(
         message as HighlightElementMessage,
@@ -56,16 +59,19 @@ chrome.runtime.onMessage.addListener(
       return true;
     }
 
-    // 4. Day 3 Toggle In-Page Assistant
+    // 4. Day 3: Toggle In-Page Assistant
     if (message.action === AURA_ACTIONS.TOGGLE_ASSISTANT) {
-      handleToggleAssistant(
-        message as ToggleAssistantMessage,
-        sendResponse
-      );
+      handleToggleAssistant(message as ToggleAssistantMessage, sendResponse);
       return true;
     }
 
-    // 5. Health Check
+    // 5. Day 4: Ask AI Guidance
+    if (message.action === AURA_ACTIONS.ASK_AI) {
+      handleAskAI(message as AskAIMessage, sendResponse as (res: AuraResponse<AskAIResponseData>) => void);
+      return true;
+    }
+
+    // 6. Health Check
     if (message.action === AURA_ACTIONS.PING) {
       sendResponse({
         success: true,
@@ -78,6 +84,103 @@ chrome.runtime.onMessage.addListener(
     return false;
   }
 );
+
+/**
+ * Day 4: Handles AI Guidance requests using Gemini Provider
+ */
+async function handleAskAI(
+  message: AskAIMessage,
+  sendResponse: (response: AuraResponse<AskAIResponseData>) => void
+): Promise<void> {
+  const { question, context } = message.payload;
+
+  if (!question || !question.trim()) {
+    sendResponse({
+      success: false,
+      error: 'Please provide a valid question for AURA.',
+      timestamp: Date.now()
+    });
+    return;
+  }
+
+  try {
+    // 1. Retrieve API key from chrome.storage.local or env fallback
+    const apiKey = await getStoredApiKey();
+
+    if (!apiKey) {
+      sendResponse({
+        success: false,
+        error: 'Connect your Gemini API key in AURA Settings to enable AI guidance.',
+        timestamp: Date.now()
+      });
+      return;
+    }
+
+    // 2. Dispatch to AI Provider
+    const model = await getStoredModel();
+    const provider = getAIProvider(model || undefined);
+    const aiResponse = await provider.ask({ question, context }, apiKey);
+
+    sendResponse({
+      success: true,
+      message: 'AI response generated successfully',
+      data: aiResponse,
+      timestamp: Date.now()
+    });
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown AI processing failure';
+    console.warn('[AURA Background] AI Error:', errorMsg);
+
+    sendResponse({
+      success: false,
+      error: errorMsg,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Securely retrieves the Gemini API key from chrome.storage.local or build environment
+ */
+async function getStoredApiKey(): Promise<string | null> {
+  try {
+    const storageData = await chrome.storage.local.get(['aura_gemini_api_key']);
+    if (storageData?.aura_gemini_api_key && typeof storageData.aura_gemini_api_key === 'string') {
+      const key = storageData.aura_gemini_api_key.trim();
+      if (key) return key;
+    }
+  } catch (err) {
+    console.warn('[AURA Background] Error reading chrome.storage.local:', err);
+  }
+
+  // Development fallback from import.meta.env
+  try {
+    const envKey = (import.meta as unknown as { env?: { VITE_GEMINI_API_KEY?: string } })?.env?.VITE_GEMINI_API_KEY;
+    if (envKey && typeof envKey === 'string' && envKey.trim()) {
+      return envKey.trim();
+    }
+  } catch {
+    // Ignore env read failure
+  }
+
+  return null;
+}
+
+/**
+ * Retrieves the preferred Gemini model from chrome.storage.local
+ */
+async function getStoredModel(): Promise<string | null> {
+  try {
+    const storageData = await chrome.storage.local.get(['aura_gemini_model']);
+    if (storageData?.aura_gemini_model && typeof storageData.aura_gemini_model === 'string') {
+      const model = storageData.aura_gemini_model.trim();
+      if (model) return model;
+    }
+  } catch {
+    // Ignore storage read failure
+  }
+  return null;
+}
 
 /**
  * Routes element highlight request to the active tab
@@ -237,7 +340,6 @@ async function handleTestConnection(
   const swTimestamp = Date.now();
 
   try {
-    // 1. Query for the active tab in current window
     const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
     if (!activeTab || !activeTab.id) {
@@ -255,7 +357,6 @@ async function handleTestConnection(
 
     console.log(`[AURA Background] Target tab: [${tabId}] ${tabTitle} (${tabUrl})`);
 
-    // 2. Validate URL eligibility (Chrome restricts content scripts on internal/system pages)
     if (isRestrictedUrl(tabUrl)) {
       sendResponse({
         success: false,
@@ -269,7 +370,6 @@ async function handleTestConnection(
       return;
     }
 
-    // 3. Prepare banner message for content script
     const bannerMessage: ShowBannerMessage = {
       action: AURA_ACTIONS.SHOW_BANNER,
       payload: {
@@ -279,7 +379,6 @@ async function handleTestConnection(
       }
     };
 
-    // 4. Attempt to send message to content script in the active tab
     try {
       const contentScriptResponse = await sendTabMessageWithFallback(tabId, bannerMessage);
 
@@ -336,8 +435,7 @@ function isRestrictedUrl(url: string): boolean {
 }
 
 /**
- * Sends message to tab content script. If tab was loaded before extension was installed,
- * dynamically injects the content script via chrome.scripting.executeScript and retries.
+ * Sends message to tab content script with dynamic fallback injection
  */
 async function sendTabMessageWithFallback(
   tabId: number,
