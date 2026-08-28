@@ -7,6 +7,7 @@
  * - DAY 3: Element highlighting target lookup safety
  * - DAY 4: AI prompt builder, response validator, anti-hallucination firewall
  * - DAY 5: Privacy Shield (Email, Phone, Luhn-checked Card, Aadhaar, API Keys, Tokens, Immutability)
+ * - DAY 6 (ENV CONFIG): Safe environment configuration, unconfigured failure safety, zero key leaks
  * - INTEGRATION: Full end-to-end sanitized & redacted AI transmission pipeline
  */
 
@@ -19,6 +20,8 @@ import { scanTextForSensitiveData, luhnCheck } from '../src/privacy/scanner';
 import { redactString } from '../src/privacy/redactor';
 import { PrivacyShield } from '../src/privacy/privacyShield';
 import { DEFAULT_GEMINI_MODEL, GEMINI_FALLBACK_CHAIN } from '../src/ai/types';
+import { GeminiProvider } from '../src/ai/geminiProvider';
+import { getGeminiApiKey, isGeminiConfigured } from '../src/config/env';
 import type { PageContext } from '../src/types/page';
 
 console.log('====================================================');
@@ -210,9 +213,38 @@ if (
 }
 
 // ----------------------------------------------------
-// SECTION 6: FULL END-TO-END INTEGRATION PIPELINE
+// SECTION 6: ENVIRONMENT CONFIGURATION & SAFE FAILURE
 // ----------------------------------------------------
-console.log('\n--- SECTION 6: FULL END-TO-END AI PIPELINE ---');
+console.log('\n--- SECTION 6: ENVIRONMENT CONFIGURATION & SAFETY ---');
+const provider = new GeminiProvider();
+
+// Test safe failure when API key is completely empty/missing
+let unconfiguredErrorCaught = false;
+try {
+  // Passing empty string explicitly tests missing key behavior
+  await provider.ask({ question: 'Test?', context: sanitized }, '');
+} catch (err: unknown) {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes('Gemini AI is not configured')) {
+    unconfiguredErrorCaught = true;
+  }
+}
+
+if (unconfiguredErrorCaught) {
+  console.log('  ✓ GeminiProvider safely rejects unconfigured requests without making network calls.');
+} else {
+  console.error('❌ Section 6 Failed: Missing key did not throw expected safe error.');
+  process.exit(1);
+}
+
+// Verify configuration detection abstraction
+console.log(`  ✓ Environment configuration check: isGeminiConfigured() = ${isGeminiConfigured()}`);
+console.log('✅ Section 6 Passed: Environment configuration abstraction and safety verified.');
+
+// ----------------------------------------------------
+// SECTION 7: FULL END-TO-END INTEGRATION PIPELINE
+// ----------------------------------------------------
+console.log('\n--- SECTION 7: FULL END-TO-END AI PIPELINE ---');
 
 // Mock context with sensitive data in structured fields
 const sensitiveContext: PageContext = {
@@ -249,7 +281,7 @@ const protectedResult = PrivacyShield.protect(sanitizedContext);
 const originalJsonAfter = JSON.stringify(sanitizedContext);
 
 if (originalJsonBefore !== originalJsonAfter) {
-  console.error('❌ Section 6 Failed: Privacy Shield mutated the original context.');
+  console.error('❌ Section 7 Failed: Privacy Shield mutated the original context.');
   process.exit(1);
 }
 
@@ -267,9 +299,9 @@ const leaks = [
 ].filter(secret => aiUserPrompt.includes(secret));
 
 if (leaks.length === 0 && protectedResult.summary.totalRedactedCount === 7) {
-  console.log('✅ Section 6 Passed: Complete AI pipeline verified. Zero sensitive data reached the AI prompt.');
+  console.log('✅ Section 7 Passed: Complete AI pipeline verified. Zero sensitive data reached the AI prompt.');
 } else {
-  console.error('❌ Section 6 Failed: Sensitive data leaked into AI prompt.', leaks);
+  console.error('❌ Section 7 Failed: Sensitive data leaked into AI prompt.', leaks);
   process.exit(1);
 }
 

@@ -1,24 +1,27 @@
 /**
- * AURA Gemini AI Provider (Day 4: AI Intelligence)
+ * AURA Gemini AI Provider (Day 4 - Day 6 Environment Architecture)
  *
  * Implements AIProvider interface using Google Gemini REST API.
- * Features targeted Gemini 2.5 architecture with dynamic API key model discovery:
- * 1. User-selected model (e.g., gemini-2.5-flash)
- * 2. Fallback chain (gemini-2.5-flash -> gemini-2.5-flash-lite -> gemini-2.5-pro)
- * 3. Dynamic account model discovery via /v1beta/models?key=... if 404 occurs
+ * - Automatically loads API key from Vite environment configuration (src/config/env.ts).
+ * - Targeted Gemini 2.5 architecture:
+ *   1. User-selected model (e.g., gemini-2.5-flash)
+ *   2. Fallback chain (gemini-2.5-flash -> gemini-2.5-flash-lite -> gemini-2.5-pro)
+ *   3. Dynamic account model discovery via /v1beta/models?key=... if 404 occurs
  */
 
 import type { AIProvider, AuraAIRequest, AuraAIResponse, GeminiModel } from './types';
 import { DEFAULT_GEMINI_MODEL, GEMINI_FALLBACK_CHAIN } from './types';
 import { buildSystemInstruction, buildUserPrompt } from './promptBuilder';
 import { validateAIResponse } from './responseValidator';
+import { getGeminiApiKey } from '../config/env';
 
 /**
  * Dynamically retrieves the active list of models supporting generateContent for an API key
  */
-export async function fetchAvailableGeminiModels(apiKey: string): Promise<string[]> {
-  if (!apiKey || !apiKey.trim()) return [];
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey.trim()}`;
+export async function fetchAvailableGeminiModels(apiKey?: string): Promise<string[]> {
+  const resolvedKey = (apiKey && apiKey.trim()) || getGeminiApiKey();
+  if (!resolvedKey) return [];
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models?key=${resolvedKey.trim()}`;
 
   try {
     const res = await fetch(endpoint);
@@ -44,12 +47,14 @@ export class GeminiProvider implements AIProvider {
     }
   }
 
-  public async ask(request: AuraAIRequest, apiKey: string): Promise<AuraAIResponse> {
-    if (!apiKey || !apiKey.trim()) {
-      throw new Error('Connect your Gemini API key in AURA Settings to enable AI guidance.');
+  public async ask(request: AuraAIRequest, apiKey?: string): Promise<AuraAIResponse> {
+    const resolvedKey = (apiKey && apiKey.trim()) || getGeminiApiKey();
+
+    if (!resolvedKey) {
+      throw new Error('Gemini AI is not configured. Add VITE_GEMINI_API_KEY to .env.local and rebuild AURA.');
     }
 
-    const trimmedKey = apiKey.trim();
+    const trimmedKey = resolvedKey.trim();
     const systemText = buildSystemInstruction();
     const userText = buildUserPrompt(request.question, request.context);
 
@@ -104,7 +109,7 @@ export class GeminiProvider implements AIProvider {
     if (lastErrorType === 'MODEL_404') {
       console.log('[AURA Gemini Provider] Static models returned 404. Discovering account-enabled models...');
       const discovered = await fetchAvailableGeminiModels(trimmedKey);
-      
+
       // Sort discovered models (prefer flash models first)
       const sortedDiscovered = discovered.filter(m => !triedSet.has(m)).sort((a, b) => {
         const aFlash = a.includes('flash') ? 1 : 0;
@@ -127,7 +132,7 @@ export class GeminiProvider implements AIProvider {
       throw new Error(`The requested Gemini model is not enabled for your API key.${availableNames} Please select an active model in AURA Settings.`);
     }
 
-    throw new Error(lastErrorMessage || 'Failed to generate AI guidance. Please verify your settings.');
+    throw new Error(lastErrorMessage || 'Failed to generate AI guidance. Please check your configuration.');
   }
 
   private async tryGenerate(
@@ -196,7 +201,7 @@ export class GeminiProvider implements AIProvider {
     ) {
       throw {
         type: 'AUTH',
-        message: `Invalid Gemini API Key: ${errorDetail}. Please verify your key in AURA Settings.`
+        message: 'Gemini AI configuration was rejected by the provider. Check your local API key in .env.local and rebuild AURA.'
       };
     }
 
@@ -210,7 +215,7 @@ export class GeminiProvider implements AIProvider {
     if (response.status === 404) {
       throw {
         type: 'MODEL_404',
-        message: `Gemini model "${model}" is not available (${errorDetail}).`
+        message: `Gemini model "${model}" is not available.`
       };
     }
 

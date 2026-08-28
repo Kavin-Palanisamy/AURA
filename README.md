@@ -24,7 +24,7 @@ Modern web interfaces are increasingly complex, crowded, and dynamic. Navigating
 <!-- Screenshot 1: Main AURA Popup -->
 ### 1. Main AURA Popup & Theme System
 ![AURA Popup Main Interface](public/icons/icon-128.png)
-*Figure 1: React + Tailwind popup featuring 4-tab navigation (Analyze, Privacy, Settings, Test), live webpage connection status, and instant Light/Dark mode switcher.*
+*Figure 1: React + Tailwind popup featuring 4-tab navigation (Analyze, Privacy, Settings, Test), live webpage connection status, environment AI status badge, and instant Light/Dark mode switcher.*
 
 <!-- Screenshot 2: Page Analysis -->
 ### 2. Privacy-Safe Page Intelligence
@@ -77,7 +77,8 @@ Modern web interfaces are increasingly complex, crowded, and dynamic. Navigating
                                        │ 4. Protected Metadata Only
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                       BACKGROUND SERVICE WORKER                             │
+│                     ENVIRONMENT & BACKGROUND SERVICE WORKER                 │
+│  - Loads API Key from local build environment (src/config/env.ts)           │
 │  - Dispatches protected, redacted context to Google Gemini REST API         │
 │  - Models: gemini-2.5-flash (default) -> gemini-2.5-flash-lite -> 2.5-pro   │
 │  - Dynamic Account Model Auto-Discovery via /v1beta/models API             │
@@ -105,32 +106,27 @@ Modern web interfaces are increasingly complex, crowded, and dynamic. Navigating
 - **Platform**: Chrome Extension Manifest V3
 - **Frontend UI**: React 18, TypeScript (Strict Mode)
 - **Styling**: Tailwind CSS (Popup) + Scoped Shadow DOM CSS (Floating Assistant & Highlighting)
-- **Bundler & Build Tool**: Vite (Multi-entry single-bundle packaging)
+- **Bundler & Build Tool**: Vite (Multi-entry single-bundle packaging with environment variable support)
 - **AI Provider**: Google Gemini REST API (`gemini-2.5-flash` default, `gemini-2.5-flash-lite`, `gemini-2.5-pro` with dynamic account model discovery)
 - **Privacy Engine**: Local regex pattern matchers + Luhn algorithm checksum validator (100% in-extension)
 - **Icons**: Lucide React & Scoped SVG vector icons
 
 ---
 
-## 🔒 Privacy & Security Guarantees
+## 🔑 Gemini AI Configuration
 
-| Guarantee | Technical Implementation |
-| :--- | :--- |
-| **Zero Form Value Inspection** | `pageAnalyzer.ts` strictly queries element metadata (tag name, `type`, `label`, `placeholder`, `aria-label`). `input.value` and `textarea.value` are **never read or stored**. |
-| **Zero Permanent DOM Mutations** | Uses `WeakMap<Element, string>` and `Map<string, Element>` in memory. No `data-aura-id` attributes are written to host page elements. |
-| **Local Privacy Scanning** | 100% of pattern detection, Luhn card validation, and redactions occur locally inside the browser before any network dispatch. |
-| **Fail-Closed AI Firewall** | If the Privacy Shield encounters unverified context, it halts the request with a safe user alert rather than transmitting unverified data. |
-| **Local Storage Security** | Gemini API keys are stored exclusively in `chrome.storage.local`. They are never logged, never exposed to webpage scripts, and used solely for direct communication with the Gemini API. |
+AURA loads the Google Gemini API key from a local environment variable during build time. Users do **not** need to paste or store API keys in the extension UI.
 
----
+### Step 1: Create `.env.local`
+In the root directory of the project, create a file named `.env.local` (this file is ignored by Git):
 
-## 🔑 Permissions Breakdown
+```env
+VITE_GEMINI_API_KEY=your_actual_gemini_api_key_here
+```
 
-AURA adheres strictly to the **Principle of Least Privilege**:
-
-- `activeTab`: Grants temporary access to inspect the currently active tab when the user explicitly triggers AURA.
-- `storage`: Persists user preferences (Dark/Light theme, model choice, API key) inside `chrome.storage.local`.
-- `scripting`: Executes content script initialization across standard web domains.
+> **IMPORTANT**:
+> - Never commit `.env.local` to Git. `.gitignore` is pre-configured to ignore all `.env*` files except `.env.example`.
+> - Changing or adding an API key requires rebuilding the extension (`npm run build`) and reloading the unpacked extension in Chrome.
 
 ---
 
@@ -148,7 +144,14 @@ cd AURA
 npm install
 ```
 
-### 2. Build the Extension
+### 2. Configure Environment
+```bash
+# Copy template and add your Gemini API key
+cp .env.example .env.local
+```
+Edit `.env.local` and set `VITE_GEMINI_API_KEY=your_key`.
+
+### 3. Build the Extension
 ```bash
 # Type check TypeScript codebase
 npm run type-check
@@ -157,7 +160,7 @@ npm run type-check
 npm run build
 ```
 
-### 3. Load into Google Chrome
+### 4. Load into Google Chrome
 1. Open Chrome and navigate to `chrome://extensions`.
 2. Enable the **Developer mode** toggle in the top-right corner.
 3. Click **Load unpacked** in the top-left corner.
@@ -166,12 +169,35 @@ npm run build
 
 ---
 
+## 🔒 Security & Privacy Considerations
+
+| Principle | Technical Implementation & Notes |
+| :--- | :--- |
+| **Local Environment Variables** | `.env.local` prevents accidentally committing sensitive API keys to source control repositories. |
+| **Client-Side Build Notice** | In client-side extensions, environment variables prefixed with `VITE_` are embedded into the compiled JavaScript bundle (`dist/`). Therefore, apply appropriate API key restrictions (e.g. IP, domain, or quota caps) in Google AI Studio or Google Cloud Console. |
+| **Production Architecture Recommendation** | For enterprise or multi-tenant deployments, route requests through a secure backend proxy or use OAuth authentication rather than distributing build-embedded keys. |
+| **Zero Form Value Inspection** | `pageAnalyzer.ts` strictly queries element metadata (tag name, `type`, `label`, `placeholder`, `aria-label`). `input.value` and `textarea.value` are **never read or stored**. |
+| **Zero Permanent DOM Mutations** | Uses `WeakMap<Element, string>` and `Map<string, Element>` in memory. No `data-aura-id` attributes are written to host page elements. |
+| **Local Privacy Scanning** | 100% of pattern detection, Luhn card validation, and redactions occur locally inside the browser before any network dispatch. |
+
+---
+
+## 🔑 Permissions Breakdown
+
+AURA adheres strictly to the **Principle of Least Privilege**:
+
+- `activeTab`: Grants temporary access to inspect the currently active tab when the user explicitly triggers AURA.
+- `storage`: Persists non-sensitive UI preferences (Dark/Light theme, model preference) inside `chrome.storage.local`.
+- `scripting`: Executes content script initialization across standard web domains.
+
+---
+
 ## 🧪 Testing & Verification
 
 AURA includes automated test suites covering all architectural layers:
 
 ```bash
-# Run Master Regression & Integration Suite (Days 1 - 5 + E2E)
+# Run Master Regression & Integration Suite (Days 1 - 6 + Env Config + E2E)
 npx tsx scripts/verify-final.ts
 
 # Run AI Intelligence Verification Suite (Day 4)
@@ -217,6 +243,8 @@ AURA/
 │   │   └── types.ts                   # Sanitized context, Gemini model, and response types
 │   ├── background/
 │   │   └── serviceWorker.ts           # Service worker routing (Test, Analyze, Highlight, Ask AI, Scan Privacy)
+│   ├── config/
+│   │   └── env.ts                     # Environment variable abstraction (safe API key accessor)
 │   ├── content/
 │   │   ├── content.ts                 # Shadow DOM host initialization & message listeners
 │   │   ├── elementRegistry.ts         # In-memory AURA Element Registry (WeakMap/Map)
@@ -238,6 +266,7 @@ AURA/
 │       ├── messages.ts                # Discriminated union types for runtime messaging
 │       ├── page.ts                    # PageContext and element data models
 │       └── theme.ts                   # Light/Dark/System theme types
+├── .env.example                       # Environment variable template
 ├── manifest.json                      # Manifest V3 specification
 ├── vite.config.ts                     # Multi-entry Vite bundler configuration
 └── package.json                       # Scripts and project dependencies

@@ -128,22 +128,10 @@ async function handleAskAI(
       return;
     }
 
-    // 2. Retrieve API key from chrome.storage.local or env fallback
-    const apiKey = await getStoredApiKey();
-
-    if (!apiKey) {
-      sendResponse({
-        success: false,
-        error: 'Connect your Gemini API key in AURA Settings to enable AI guidance.',
-        timestamp: Date.now()
-      });
-      return;
-    }
-
-    // 3. Dispatch REDACTED context to AI Provider
+    // 2. Dispatch REDACTED context to AI Provider (auto-loads API key from env)
     const model = await getStoredModel();
     const provider = getAIProvider(model || undefined);
-    const aiResponse = await provider.ask({ question, context: protectedResult.context }, apiKey);
+    const aiResponse = await provider.ask({ question, context: protectedResult.context });
 
     sendResponse({
       success: true,
@@ -230,32 +218,7 @@ async function handleScanPrivacy(
   }
 }
 
-/**
- * Securely retrieves the Gemini API key from chrome.storage.local or build environment
- */
-async function getStoredApiKey(): Promise<string | null> {
-  try {
-    const storageData = await chrome.storage.local.get(['aura_gemini_api_key']);
-    if (storageData?.aura_gemini_api_key && typeof storageData.aura_gemini_api_key === 'string') {
-      const key = storageData.aura_gemini_api_key.trim();
-      if (key) return key;
-    }
-  } catch (err) {
-    console.warn('[AURA Background] Error reading chrome.storage.local:', err);
-  }
 
-  // Development fallback from import.meta.env
-  try {
-    const envKey = (import.meta as unknown as { env?: { VITE_GEMINI_API_KEY?: string } })?.env?.VITE_GEMINI_API_KEY;
-    if (envKey && typeof envKey === 'string' && envKey.trim()) {
-      return envKey.trim();
-    }
-  } catch {
-    // Ignore env read failure
-  }
-
-  return null;
-}
 
 /**
  * Retrieves the preferred Gemini model from chrome.storage.local

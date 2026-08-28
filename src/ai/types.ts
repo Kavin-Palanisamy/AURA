@@ -84,5 +84,5 @@ export interface RawAIResponse {
 
 export interface AIProvider {
   name: string;
-  ask(request: AuraAIRequest, apiKey: string): Promise<AuraAIResponse>;
+  ask(request: AuraAIRequest, apiKey?: string): Promise<AuraAIResponse>;
 }

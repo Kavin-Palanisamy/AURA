@@ -22,9 +22,6 @@ import {
   PanelRightOpen,
   Focus,
   KeyRound,
-  Eye,
-  EyeOff,
-  Trash2,
   Save,
   Mail,
   Phone,
@@ -33,7 +30,8 @@ import {
   Lock,
   Binary,
   Sun,
-  Moon
+  Moon,
+  CheckCircle
 } from 'lucide-react';
 import {
   AURA_ACTIONS,
@@ -51,6 +49,7 @@ import type { PageContext } from '../types/page';
 import type { PrivacyFinding, PrivacyScanSummary } from '../privacy/types';
 import type { ThemeMode } from '../types/theme';
 import { fetchAvailableGeminiModels } from '../ai/geminiProvider';
+import { isGeminiConfigured } from '../config/env';
 
 type ActiveTabMode = 'analyze' | 'privacy' | 'settings' | 'test';
 type StatusState = 'idle' | 'loading' | 'success' | 'error';
@@ -86,14 +85,12 @@ export default function Popup() {
   const [copied, setCopied] = useState<boolean>(false);
   const [highlightFeedback, setHighlightFeedback] = useState<string | null>(null);
 
-  // Day 4 Settings & API Key State
-  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+  // Day 4 & Day 6 Settings State (Environment-driven configuration)
   const [modelSelect, setModelSelect] = useState<string>('gemini-2.5-flash');
   const [isDetectingModels, setIsDetectingModels] = useState<boolean>(false);
   const [detectedModels, setDetectedModels] = useState<string[]>([]);
-  const [hasStoredKey, setHasStoredKey] = useState<boolean>(false);
-  const [showKey, setShowKey] = useState<boolean>(false);
   const [settingsFeedback, setSettingsFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const isConfigured = isGeminiConfigured();
 
   // Day 5 Privacy Shield State
   const [privacyStatus, setPrivacyStatus] = useState<StatusState>('idle');
@@ -115,13 +112,7 @@ export default function Popup() {
   const loadStoredSettings = async () => {
     try {
       if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-        const data = await chrome.storage.local.get(['aura_gemini_api_key', 'aura_gemini_model', 'aura_theme_mode']);
-        if (data?.aura_gemini_api_key) {
-          setHasStoredKey(true);
-          setApiKeyInput(data.aura_gemini_api_key);
-        } else {
-          setHasStoredKey(false);
-        }
+        const data = await chrome.storage.local.get(['aura_gemini_model', 'aura_theme_mode']);
         if (data?.aura_gemini_model) {
           const storedModel = data.aura_gemini_model;
           if (['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'].includes(storedModel)) {
@@ -153,22 +144,22 @@ export default function Popup() {
   };
 
   const handleDetectModels = async () => {
-    if (!apiKeyInput.trim()) {
-      setSettingsFeedback({ type: 'error', text: 'Enter your API key first to auto-detect models.' });
+    if (!isConfigured) {
+      setSettingsFeedback({ type: 'error', text: 'Configure VITE_GEMINI_API_KEY in .env.local first.' });
       return;
     }
     setIsDetectingModels(true);
     try {
-      const list = await fetchAvailableGeminiModels(apiKeyInput.trim());
+      const list = await fetchAvailableGeminiModels();
       if (list.length > 0) {
         setDetectedModels(list);
         if (!list.includes(modelSelect)) {
           const best = list.find(m => m.includes('flash')) || list[0];
           setModelSelect(best);
         }
-        setSettingsFeedback({ type: 'success', text: `Found ${list.length} active model(s) for your account!` });
+        setSettingsFeedback({ type: 'success', text: `Found ${list.length} active model(s) on your Google account!` });
       } else {
-        setSettingsFeedback({ type: 'error', text: 'Could not fetch models. Verify your API key or network.' });
+        setSettingsFeedback({ type: 'error', text: 'Could not fetch models. Check network or API key.' });
       }
     } catch {
       setSettingsFeedback({ type: 'error', text: 'Failed to query Gemini models API.' });
@@ -178,41 +169,17 @@ export default function Popup() {
     }
   };
 
-  const handleSaveApiKey = async () => {
-    if (!apiKeyInput.trim()) {
-      setSettingsFeedback({ type: 'error', text: 'Please enter a valid Gemini API key.' });
-      return;
-    }
-
+  const handleSaveModel = async () => {
     try {
       if (typeof chrome !== 'undefined' && chrome.storage?.local) {
         await chrome.storage.local.set({
-          aura_gemini_api_key: apiKeyInput.trim(),
           aura_gemini_model: modelSelect
         });
-        setHasStoredKey(true);
-        setSettingsFeedback({ type: 'success', text: 'Gemini settings saved securely in extension storage!' });
+        setSettingsFeedback({ type: 'success', text: 'Model preference saved!' });
         setTimeout(() => setSettingsFeedback(null), 3000);
-      } else {
-        setSettingsFeedback({ type: 'error', text: 'Chrome extension storage is unavailable in preview.' });
       }
     } catch (err) {
       setSettingsFeedback({ type: 'error', text: 'Failed to save settings.' });
-    }
-  };
-
-  const handleClearApiKey = async () => {
-    try {
-      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-        await chrome.storage.local.remove(['aura_gemini_api_key', 'aura_gemini_model']);
-        setApiKeyInput('');
-        setModelSelect('gemini-2.5-flash');
-        setHasStoredKey(false);
-        setSettingsFeedback({ type: 'success', text: 'API key cleared from storage.' });
-        setTimeout(() => setSettingsFeedback(null), 3000);
-      }
-    } catch (err) {
-      setSettingsFeedback({ type: 'error', text: 'Failed to clear API key.' });
     }
   };
 
@@ -533,7 +500,7 @@ export default function Popup() {
 
           <div className={`flex items-center gap-1 px-2 py-1 rounded-full border text-[9.5px] font-medium ${isLight ? 'bg-emerald-100 border-emerald-300 text-emerald-800' : 'bg-slate-900 border-slate-800 text-emerald-400'}`}>
             <ShieldCheck className="w-3 h-3 text-emerald-500" />
-            <span>{hasStoredKey ? 'AI Ready' : 'Protected'}</span>
+            <span>{isConfigured ? 'AI Ready' : 'Protected'}</span>
           </div>
         </div>
       </header>
@@ -589,7 +556,7 @@ export default function Popup() {
               ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
               : isLight ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-300/50' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
-          title="AI model and Gemini API Key configuration"
+          title="AI model and configuration status"
         >
           <KeyRound className="w-3 h-3" />
           <span className="text-[10px]">Settings</span>
@@ -969,54 +936,53 @@ export default function Popup() {
         </div>
       )}
 
-      {/* VIEW 3: DAY 4 AI SETTINGS */}
+      {/* VIEW 3: DAY 4 & DAY 6 AI SETTINGS (Environment Configuration) */}
       {activeTabMode === 'settings' && (
         <div role="tabpanel" id="panel-settings" aria-labelledby="tab-settings" className="flex flex-col gap-3 animate-fade-in">
           <div className={`rounded-xl p-3 border flex flex-col gap-2.5 ${isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900/70 border-slate-800/80'}`}>
             <div className="flex items-center justify-between">
               <div className={`flex items-center gap-1.5 text-xs font-semibold ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
                 <KeyRound className="w-3.5 h-3.5 text-cyan-500" />
-                <span>Google Gemini API Key</span>
+                <span>AI Configuration</span>
               </div>
               <span
-                className={`text-[9.5px] font-semibold px-2 py-0.5 rounded-full border ${
-                  hasStoredKey
+                className={`text-[9.5px] font-semibold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                  isConfigured
                     ? isLight ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/40'
                     : isLight ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-amber-950/60 text-amber-300 border-amber-800/40'
                 }`}
               >
-                {hasStoredKey ? 'Connected' : 'Missing Key'}
+                <span className={`w-1.5 h-1.5 rounded-full ${isConfigured ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+                <span>{isConfigured ? 'Gemini AI Ready' : 'Config Missing'}</span>
               </span>
             </div>
 
-            <p className={`text-[11px] leading-snug ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-              Enter your Google Gemini API key to enable live AI page understanding and element guidance.
-            </p>
-
-            {/* Input Box */}
-            <div className="relative flex items-center">
-              <input
-                type={showKey ? 'text' : 'password'}
-                value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
-                placeholder="AIzaSy..."
-                aria-label="Google Gemini API Key"
-                className={`w-full border rounded-lg py-2 pl-3 pr-10 text-xs font-mono focus:outline-none focus:border-indigo-500 ${
-                  isLight
-                    ? 'bg-slate-100 border-slate-300 text-slate-900 placeholder-slate-400'
-                    : 'bg-slate-950 border-slate-700/80 text-slate-200 placeholder-slate-600'
-                }`}
-              />
-              <button
-                type="button"
-                onClick={() => setShowKey(!showKey)}
-                className="absolute right-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none rounded"
-                title={showKey ? 'Hide key' : 'Show key'}
-                aria-label={showKey ? 'Hide API key' : 'Show API key'}
-              >
-                {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              </button>
-            </div>
+            {/* Non-Sensitive Configuration Status Card */}
+            {isConfigured ? (
+              <div className={`p-2.5 rounded-lg border flex items-center gap-2 ${
+                isLight ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-emerald-950/40 border-emerald-800/50 text-emerald-200'
+              }`}>
+                <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
+                <div className="flex flex-col text-[11px]">
+                  <span className="font-semibold">Gemini API Configured</span>
+                  <span className={`text-[10px] ${isLight ? 'text-emerald-700' : 'text-emerald-400/80'}`}>
+                    Loaded from local build environment (<code className="font-mono">.env.local</code>)
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className={`p-2.5 rounded-lg border flex items-start gap-2 ${
+                isLight ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-amber-950/40 border-amber-800/50 text-amber-200'
+              }`}>
+                <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <div className="flex flex-col text-[11px] gap-0.5">
+                  <span className="font-semibold">AI Configuration Missing</span>
+                  <span className={`text-[10px] leading-snug ${isLight ? 'text-amber-800' : 'text-amber-300/80'}`}>
+                    Set <code className="font-mono bg-slate-200 dark:bg-slate-900 px-1 py-0.5 rounded">VITE_GEMINI_API_KEY</code> in your local <code className="font-mono">.env.local</code> file and rebuild AURA.
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Model Selector with Auto-Detect */}
             <div className="flex flex-col gap-1 mt-1">
@@ -1025,9 +991,9 @@ export default function Popup() {
                 <button
                   type="button"
                   onClick={handleDetectModels}
-                  disabled={isDetectingModels}
+                  disabled={isDetectingModels || !isConfigured}
                   className="text-[9.5px] text-cyan-500 hover:text-cyan-600 dark:hover:text-cyan-300 font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none rounded"
-                  title="Detect supported models for your API key"
+                  title="Detect supported models for your account"
                   aria-label="Auto-detect supported Gemini models"
                 >
                   <RefreshCw className={`w-2.5 h-2.5 ${isDetectingModels ? 'animate-spin' : ''}`} />
@@ -1061,31 +1027,15 @@ export default function Popup() {
               </select>
             </div>
 
-            {/* Buttons */}
-            <div className="flex items-center gap-2 mt-1">
+            {/* Save Model Preference Button */}
+            <div className="mt-1">
               <button
-                onClick={handleSaveApiKey}
-                className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none"
+                onClick={handleSaveModel}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none"
               >
                 <Save className="w-3.5 h-3.5" />
-                <span>Save Settings</span>
+                <span>Save Model Preference</span>
               </button>
-
-              {hasStoredKey && (
-                <button
-                  onClick={handleClearApiKey}
-                  className={`border text-xs py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:outline-none ${
-                    isLight
-                      ? 'bg-slate-200 hover:bg-rose-100 hover:text-rose-800 hover:border-rose-300 border-slate-300 text-slate-700'
-                      : 'bg-slate-800 hover:bg-rose-950/60 hover:text-rose-300 hover:border-rose-800/60 border-slate-700 text-slate-400'
-                  }`}
-                  title="Remove stored key"
-                  aria-label="Clear API key from storage"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Clear</span>
-                </button>
-              )}
             </div>
 
             {settingsFeedback && (
@@ -1111,10 +1061,10 @@ export default function Popup() {
           <div className={`rounded-xl p-3 border flex flex-col gap-1.5 text-[11px] ${isLight ? 'bg-slate-100/70 border-slate-200 text-slate-600' : 'bg-slate-900/40 border-slate-800/60 text-slate-400'}`}>
             <div className={`flex items-center gap-1.5 font-semibold text-xs ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Local Storage Security</span>
+              <span>Environment Security</span>
             </div>
             <p className="leading-relaxed text-[10.5px]">
-              Your API key is stored strictly within your browser's <code className="text-cyan-500 bg-slate-200 dark:bg-slate-950 px-1 py-0.5 rounded font-mono">chrome.storage.local</code>. It is never logged, never exposed to webpage scripts, and used solely for direct communication with the Gemini API.
+              The API key is securely loaded from your local <code className="text-cyan-500 font-mono">.env.local</code> file during build time. It is never exposed in UI inputs or stored in browser storage.
             </p>
           </div>
         </div>
