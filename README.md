@@ -286,7 +286,7 @@ AURA/
 
 - [ ] **Voice Guidance & Screen Reader Audio Output**: Integration of local Web Speech API for auditory element guidance.
 - [ ] **Custom Sensitivity Patterns**: User-defined regex rules in AURA Settings for enterprise-specific identifiers (e.g. employee IDs, internal project codes).
-- [ ] **Multi-Model Provider Support**: Pluggable AI provider adapters for Anthropic Claude, OpenAI, and local WebGPU / Ollama models.
+- [ ] **Multi-Model Provider Support**: Pluggable AI provider adapters for Anthropic Claude, OpenAI, and local WebGPU / Ollama models
 
 ---
 
